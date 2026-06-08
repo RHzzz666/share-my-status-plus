@@ -340,29 +340,7 @@ struct SettingsTabView: View {
                                         .frame(width: 70)
                                 }
                             }
-
-                            // Window days control
-                            VStack(alignment: .leading, spacing: 5) {
-                                HStack {
-                                    Text("统计窗口:")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                }
-                                HStack {
-                                    Slider(
-                                        value: Binding(
-                                            get: { Double(configuration.tokenWindowDays) },
-                                            set: { configuration.tokenWindowDays = Int($0) }
-                                        ),
-                                        in: DefaultSettings.tokenWindowDaysRange,
-                                        step: DefaultSettings.tokenWindowDaysStep
-                                    )
-                                    Text("\(configuration.tokenWindowDays) 天")
-                                        .font(.caption)
-                                        .frame(width: 70)
-                                }
-                            }
+                            // 统计窗口固定为 30 天(展示 今日/7天/30天 三档),不提供调整。
                         }
                     }
                     .padding(.vertical, 8)
