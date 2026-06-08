@@ -126,6 +126,20 @@ struct StatusTabView: View {
                     .padding(.vertical, 8)
                 }
                 
+                // AI Token Usage
+                if configuration.tokenReportingEnabled {
+                    GroupBox("AI Token 用量") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if let usage = reporter.currentTokenUsage {
+                                TokenUsageCard(usage: usage)
+                            } else {
+                                EmptyTokenCard()
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
                 // Statistics
                 GroupBox("统计信息") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -884,6 +898,130 @@ private struct EmptyActivityCard: View {
                     .foregroundColor(Color.secondary)
             }
             
+            Spacer()
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        )
+    }
+}
+
+// Token Usage Card
+private struct TokenUsageCard: View {
+    let usage: TokenUsageAggregate
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Today's total + top model
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.blue.opacity(0.15))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(.blue)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("今日 \(TokenFormatting.compact(usage.today.totalTokens)) tokens")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    if !usage.topModel.isEmpty {
+                        Text("主力模型: \(usage.topModel)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(usage.sessionCount) 个会话")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text("近 \(usage.windowDays) 天 \(TokenFormatting.compact(usage.total.totalTokens))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            // Per-window summary
+            HStack(spacing: 16) {
+                TokenWindowStat(label: "今日", value: usage.today.totalTokens)
+                TokenWindowStat(label: "近 7 天", value: usage.last7d.totalTokens)
+                TokenWindowStat(label: "近 \(usage.windowDays) 天", value: usage.total.totalTokens)
+                Spacer()
+            }
+
+            // Per-model breakdown (today)
+            if !usage.today.byModel.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("今日按模型")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    ForEach(Array(usage.today.byModel.prefix(5).enumerated()), id: \.offset) { _, model in
+                        HStack {
+                            Text(model.model)
+                                .font(.caption2)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(TokenFormatting.compact(model.totalTokens))
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(NSColor.controlBackgroundColor))
+                .shadow(color: .black.opacity(0.05), radius: 1, x: 0, y: 1)
+        )
+    }
+}
+
+private struct TokenWindowStat: View {
+    let label: String
+    let value: Int64
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text(TokenFormatting.compact(value))
+                .font(.caption)
+                .fontWeight(.semibold)
+        }
+    }
+}
+
+private struct EmptyTokenCard: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.gray.opacity(0.1))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(.gray)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("暂无 Token 数据")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Text("启用上报后将扫描本地 AI 工具日志")
+                    .font(.caption)
+                    .foregroundColor(Color.secondary)
+            }
             Spacer()
         }
         .padding(12)

@@ -22,13 +22,15 @@ class StatusReporter: ObservableObject {
     @Published var currentMusic: MusicSnapshot?
     @Published var currentSystem: SystemSnapshot?
     @Published var currentActivity: ActivitySnapshot?
-    
+    @Published var currentTokenUsage: TokenUsageAggregate?
+
     // Services
     private let mediaService: MediaRemoteService
     private let systemService: SystemMonitorService
     private let activityService: ActivityDetectorService
     private let networkService: NetworkService
     private let coverService: CoverService
+    private let tokenService: TokenUsageService
     
     private let logger = AppLogger.reporter
     
@@ -42,13 +44,33 @@ class StatusReporter: ObservableObject {
         let activityReportingEnabled: Bool
         let systemPollingInterval: TimeInterval
         let activityPollingInterval: TimeInterval
-        
+        let tokenReportingEnabled: Bool
+        let tokenClaudeCodeEnabled: Bool
+        let tokenCodexEnabled: Bool
+        let tokenCursorEnabled: Bool
+        let tokenGeminiEnabled: Bool
+        let tokenClaudeAppEnabled: Bool
+        let tokenOpenClawEnabled: Bool
+        let tokenTraeEnabled: Bool
+        let tokenReportIntervalSeconds: TimeInterval
+        let tokenWindowDays: Int
+
         init(from config: AppConfiguration) {
             self.musicReportingEnabled = config.musicReportingEnabled
             self.systemReportingEnabled = config.systemReportingEnabled
             self.activityReportingEnabled = config.activityReportingEnabled
             self.systemPollingInterval = config.systemPollingInterval
             self.activityPollingInterval = config.activityPollingInterval
+            self.tokenReportingEnabled = config.tokenReportingEnabled
+            self.tokenClaudeCodeEnabled = config.tokenClaudeCodeEnabled
+            self.tokenCodexEnabled = config.tokenCodexEnabled
+            self.tokenCursorEnabled = config.tokenCursorEnabled
+            self.tokenGeminiEnabled = config.tokenGeminiEnabled
+            self.tokenClaudeAppEnabled = config.tokenClaudeAppEnabled
+            self.tokenOpenClawEnabled = config.tokenOpenClawEnabled
+            self.tokenTraeEnabled = config.tokenTraeEnabled
+            self.tokenReportIntervalSeconds = config.tokenReportIntervalSeconds
+            self.tokenWindowDays = config.tokenWindowDays
         }
     }
     private var previousConfigSnapshot: ConfigSnapshot?
@@ -56,7 +78,7 @@ class StatusReporter: ObservableObject {
     // Report tasks (consolidates polling + reporting into a single loop per service)
     private var systemReportTask: Task<Void, Never>?
     private var activityReportTask: Task<Void, Never>?
-    
+
     // Initialization
     init() {
         self.mediaService = MediaRemoteService()
@@ -64,10 +86,11 @@ class StatusReporter: ObservableObject {
         self.activityService = ActivityDetectorService()
         self.networkService = NetworkService()
         self.coverService = CoverService()
-        
+        self.tokenService = TokenUsageService()
+
         logger.info("StatusReporter initialized")
     }
-    
+
     deinit {
         systemReportTask?.cancel()
         activityReportTask?.cancel()
@@ -122,7 +145,22 @@ class StatusReporter: ObservableObject {
             // Update polling intervals
             await systemService.updatePollingInterval(config.systemPollingInterval)
             await activityService.updatePollingInterval(config.activityPollingInterval)
-            
+
+            // Push latest token configuration to the token service
+            await tokenService.updateConfiguration(
+                toggles: TokenParserToggles(
+                    claudeCode: config.tokenClaudeCodeEnabled,
+                    codex: config.tokenCodexEnabled,
+                    cursor: config.tokenCursorEnabled,
+                    gemini: config.tokenGeminiEnabled,
+                    claudeApp: config.tokenClaudeAppEnabled,
+                    openClaw: config.tokenOpenClawEnabled,
+                    trae: config.tokenTraeEnabled
+                ),
+                windowDays: config.tokenWindowDays,
+                intervalSeconds: config.tokenReportIntervalSeconds
+            )
+
             // Handle service toggles if reporting is active
             if isReporting {
                 logger.info("Reporting is active, checking service toggles")
@@ -186,6 +224,17 @@ class StatusReporter: ObservableObject {
             }
         }
         
+        // Check token reporting toggle
+        if prev.tokenReportingEnabled != current.tokenReportingEnabled {
+            if current.tokenReportingEnabled {
+                logger.info("Starting token service (user enabled)...")
+                await startTokenService()
+            } else {
+                logger.info("Stopping token service (user disabled)...")
+                await stopTokenService()
+            }
+        }
+
         // Check if polling intervals changed (restart if running)
         if prev.systemPollingInterval != current.systemPollingInterval && current.systemReportingEnabled {
             logger.info("System polling interval changed, restarting...")
@@ -256,25 +305,32 @@ class StatusReporter: ObservableObject {
             } else {
                 logger.info("Activity reporting disabled in config")
             }
-            
+
+            if config.tokenReportingEnabled {
+                await startTokenService()
+            } else {
+                logger.info("Token reporting disabled in config")
+            }
+
             await updateReportingStatus()
         }
     }
-    
+
     // Stop Reporting
     func stopReporting() {
         logger.info("Stopping status reporting...")
         isReporting = false
-        
+
         // Persist reporting state
         saveReportingState(false)
-        
+
         Task {
             // Stop all services using dedicated methods
             await stopMusicService()
             await stopSystemService()
             await stopActivityService()
-            
+            await stopTokenService(sendZeroedReport: false)
+
             await updateReportingStatus()
         }
     }
@@ -434,7 +490,60 @@ class StatusReporter: ObservableObject {
         currentActivity = nil
         lastReportedActivityLabel = nil
     }
-    
+
+    /// Start token usage service only
+    private func startTokenService() async {
+        guard let config = configuration, config.tokenReportingEnabled else {
+            logger.info("Token reporting disabled, skipping start")
+            return
+        }
+
+        logger.info("Starting token service...")
+
+        // Push latest config and register the change callback that reports.
+        await tokenService.updateConfiguration(
+            toggles: TokenParserToggles(
+                claudeCode: config.tokenClaudeCodeEnabled,
+                codex: config.tokenCodexEnabled,
+                cursor: config.tokenCursorEnabled,
+                gemini: config.tokenGeminiEnabled,
+                claudeApp: config.tokenClaudeAppEnabled,
+                openClaw: config.tokenOpenClawEnabled,
+                trae: config.tokenTraeEnabled
+            ),
+            windowDays: config.tokenWindowDays,
+            intervalSeconds: config.tokenReportIntervalSeconds
+        )
+
+        await tokenService.registerCallback { [weak self] aggregate in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.currentTokenUsage = aggregate
+                await self.reportTokenUsage(aggregate)
+            }
+        }
+
+        await tokenService.start()
+        logger.info("Token service started")
+    }
+
+    /// Stop token usage service only. When `sendZeroedReport` is true (the user
+    /// disabled token reporting while still reporting overall), send ONE report
+    /// with a zeroed tokens block so the backend clears the signature, then stop.
+    private func stopTokenService(sendZeroedReport: Bool = true) async {
+        logger.info("Stopping token service (sendZeroed=\(sendZeroedReport))...")
+        await tokenService.stop()
+
+        if sendZeroedReport, isReporting {
+            let windowDays = configuration?.tokenWindowDays ?? DefaultSettings.tokenWindowDays
+            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+            let zeroed = TokenUsageAggregate.zeroed(windowDays: windowDays, ts: nowMs)
+            await reportTokenUsage(zeroed)
+        }
+
+        currentTokenUsage = nil
+    }
+
     // Report Methods
     
     /// Report music change immediately (event-driven)
@@ -546,10 +655,27 @@ class StatusReporter: ObservableObject {
             music: nil,
             activity: activityInfo
         )
-        
+
         await sendReport(event: event, source: "activity")
     }
-    
+
+    /// Report token usage (event-driven from the token service callback, and the
+    /// one-shot zeroed report when token reporting is disabled).
+    private func reportTokenUsage(_ aggregate: TokenUsageAggregate) async {
+        // Allow a zeroed report through even if the toggle just flipped off; that
+        // is exactly the "clear the signature" report. Otherwise gate on the toggle.
+        let isZeroed = aggregate.total.totalTokens == 0
+            && aggregate.today.totalTokens == 0
+            && aggregate.last7d.totalTokens == 0
+        guard let config = configuration else { return }
+        guard config.tokenReportingEnabled || isZeroed else { return }
+
+        logger.debug("Reporting token usage (today=\(aggregate.today.totalTokens), topModel=\(aggregate.topModel))")
+
+        let event = ReportEvent(tokens: aggregate.toDTO())
+        await sendReport(event: event, source: "tokens")
+    }
+
     /// Send report to server
     private func sendReport(event: ReportEvent, source: String) async {
         let request = BatchReportRequest(events: [event])
@@ -604,7 +730,11 @@ class StatusReporter: ObservableObject {
         if config.activityReportingEnabled, await activityService.isActive() {
             activeModules.append("活动")
         }
-        
+
+        if config.tokenReportingEnabled, await tokenService.isActive() {
+            activeModules.append("Token")
+        }
+
         if activeModules.isEmpty {
             reportingStatus = "无活动模块"
         } else {

@@ -19,6 +19,7 @@ struct AppLogger {
         case network = "Network"
         case cover = "Cover"
         case reporter = "Reporter"
+        case token = "Token"
     }
     
     private let logger: os.Logger
@@ -83,5 +84,6 @@ extension AppLogger {
     static let network = AppLogger(category: .network)
     static let cover = AppLogger(category: .cover)
     static let reporter = AppLogger(category: .reporter)
+    static let token = AppLogger(category: .token)
 }
 

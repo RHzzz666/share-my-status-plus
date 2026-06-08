@@ -98,17 +98,21 @@ func (s *StateService) processEvent(ctx context.Context, userID uint64, event *c
 	if event.Activity != nil && event.Activity.Ts > lastUpdateTs {
 		lastUpdateTs = event.Activity.Ts
 	}
+	if event.Tokens != nil && event.Tokens.Ts > lastUpdateTs {
+		lastUpdateTs = event.Tokens.Ts
+	}
 	// 如果所有字段都为空，使用当前时间
 	if lastUpdateTs == 0 {
 		lastUpdateTs = time.Now().UnixMilli()
 	}
 
-	// 构建新的状态快照
+	// 构建新的状态快照（token 块在此做服务端定价/聚合）
 	newSnapshot := &common.StatusSnapshot{
 		LastUpdateTs: lastUpdateTs,
 		System:       event.System,
 		Music:        event.Music,
 		Activity:     event.Activity,
+		Tokens:       priceTokenUsage(event.Tokens),
 	}
 
 	// 获取现有状态并进行合并
@@ -208,6 +212,14 @@ func (s *StateService) mergeSnapshots(existing *common.StatusSnapshot, new *comm
 		merged.Activity = new.Activity
 	} else {
 		merged.Activity = existing.Activity
+	}
+
+	// Token 用量：如果新快照中有 Tokens，整体覆盖；否则保留旧的。
+	// 客户端在关闭上报时会发一次「全零」块来覆盖清空旧数据（个性签名归零）。
+	if new.Tokens != nil {
+		merged.Tokens = new.Tokens
+	} else {
+		merged.Tokens = existing.Tokens
 	}
 
 	return merged

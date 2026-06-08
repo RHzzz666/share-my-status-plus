@@ -282,6 +282,93 @@ struct SettingsTabView: View {
                     .padding(.horizontal, 4)
                 }
 
+                // AI Token Usage Settings
+                GroupBox("AI Token 用量") {
+                    VStack(alignment: .leading, spacing: 15) {
+                        Toggle("AI Token 用量上报", isOn: $configuration.tokenReportingEnabled)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+
+                        Text("扫描本地 AI 工具日志，聚合 Token 用量并上报（不上传任何对话内容）")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        if configuration.tokenReportingEnabled {
+                            Divider()
+
+                            // Per-tool toggles
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("数据来源")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+
+                                Toggle("Claude Code (~/.claude)", isOn: $configuration.tokenClaudeCodeEnabled)
+                                    .font(.caption)
+                                Toggle("Codex (~/.codex)", isOn: $configuration.tokenCodexEnabled)
+                                    .font(.caption)
+                                Toggle("Cursor (state.vscdb, 尽力解析)", isOn: $configuration.tokenCursorEnabled)
+                                    .font(.caption)
+                                Toggle("Gemini CLI (~/.gemini, 尽力解析)", isOn: $configuration.tokenGeminiEnabled)
+                                    .font(.caption)
+                                Toggle("Claude 桌面 App", isOn: $configuration.tokenClaudeAppEnabled)
+                                    .font(.caption)
+                                Toggle("OpenClaw (~/.openclaw)", isOn: $configuration.tokenOpenClawEnabled)
+                                    .font(.caption)
+                                Toggle("Trae / coco (~/Library/Caches/coco)", isOn: $configuration.tokenTraeEnabled)
+                                    .font(.caption)
+                            }
+                            .padding(.leading, 4)
+
+                            Divider()
+
+                            // Report interval slider
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack {
+                                    Text("上报频率:")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                }
+                                HStack {
+                                    Slider(
+                                        value: $configuration.tokenReportIntervalSeconds,
+                                        in: DefaultSettings.tokenReportIntervalRange,
+                                        step: DefaultSettings.tokenReportIntervalStep
+                                    )
+                                    Text("每 \(Int(configuration.tokenReportIntervalSeconds / 60)) 分钟")
+                                        .font(.caption)
+                                        .frame(width: 70)
+                                }
+                            }
+
+                            // Window days control
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack {
+                                    Text("统计窗口:")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                }
+                                HStack {
+                                    Slider(
+                                        value: Binding(
+                                            get: { Double(configuration.tokenWindowDays) },
+                                            set: { configuration.tokenWindowDays = Int($0) }
+                                        ),
+                                        in: DefaultSettings.tokenWindowDaysRange,
+                                        step: DefaultSettings.tokenWindowDaysStep
+                                    )
+                                    Text("\(configuration.tokenWindowDays) 天")
+                                        .font(.caption)
+                                        .frame(width: 70)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 4)
+                }
+
                 // 更新检查已默认开启；如有更新将在状态页与菜单栏提示
                 // Music Settings
                 if configuration.musicReportingEnabled {

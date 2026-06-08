@@ -28,9 +28,39 @@ enum DefaultSettings {
     
     /// Default activity reporting enabled state
     static let activityReportingEnabled = true
-    
+
+    // AI Token Usage Reporting
+
+    /// Default token reporting enabled state (opt-in)
+    static let tokenReportingEnabled = false
+
+    /// Per-tool parser toggles. To match kaboo (which counts every tool), all
+    /// passive file-based parsers default ON. Cursor (needs Cursor's remote API)
+    /// defaults OFF.
+    static let tokenClaudeCodeEnabled = true
+    static let tokenCodexEnabled = true
+    static let tokenCursorEnabled = false
+    static let tokenGeminiEnabled = true
+    static let tokenClaudeAppEnabled = true
+    static let tokenOpenClawEnabled = true
+    static let tokenTraeEnabled = true
+
+    /// Default token report interval (seconds)
+    static let tokenReportIntervalSeconds: TimeInterval = 300
+
+    /// Token report interval range / step
+    static let tokenReportIntervalRange: ClosedRange<TimeInterval> = 60...3600
+    static let tokenReportIntervalStep: TimeInterval = 60
+
+    /// Default rolling window for the `total` aggregate (days)
+    static let tokenWindowDays = 30
+
+    /// Token window days range / step
+    static let tokenWindowDaysRange: ClosedRange<Double> = 7...90
+    static let tokenWindowDaysStep: Double = 1
+
     // Statistics Authorization
-    
+
     
     // App Lists
     

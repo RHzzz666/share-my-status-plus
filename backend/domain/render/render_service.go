@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -109,6 +110,7 @@ func RenderTemplate(template string, state *common.StatusSnapshot) string {
 		result = strings.ReplaceAll(result, "{title}", "未在播放")
 		result = strings.ReplaceAll(result, "{album}", "")
 		result = strings.ReplaceAll(result, "{activityLabel}", "")
+		result = renderTokenVariables(result, nil)
 		result = renderTimeVariables(result)
 		result = renderSystemVariables(result, nil)
 		result = renderConditionalVariables(result, nil)
@@ -119,6 +121,7 @@ func RenderTemplate(template string, state *common.StatusSnapshot) string {
 	result = renderMusicVariables(result, state.Music)
 	result = renderSystemVariables(result, state.System)
 	result = renderActivityVariables(result, state.Activity)
+	result = renderTokenVariables(result, state.Tokens)
 	result = renderTimeVariables(result)
 	result = renderConditionalVariables(result, state.System)
 
@@ -207,6 +210,137 @@ func renderActivityVariables(template string, activity *common.Activity) string 
 	}
 
 	return result
+}
+
+// renderTokenVariables 替换所有 token 相关占位符。
+// tokens 为 nil（无数据/未上报/已清空）时，数值渲染为 0、人类可读为 0、成本为 $0.00、topModel 为空。
+func renderTokenVariables(template string, tokens *common.TokenUsage) string {
+	result := template
+
+	var today, last7d, total *common.TokenWindowUsage
+	topModel := ""
+	var sessionCount int64
+	var windowDays int32
+	if tokens != nil {
+		today = tokens.Today
+		last7d = tokens.Last7d
+		total = tokens.Total
+		if tokens.TopModel != nil {
+			topModel = *tokens.TopModel
+		}
+		if tokens.SessionCount != nil {
+			sessionCount = *tokens.SessionCount
+		}
+		if tokens.WindowDays != nil {
+			windowDays = *tokens.WindowDays
+		}
+	}
+
+	// 当日
+	result = strings.ReplaceAll(result, "{tokensToday}", strconv.FormatInt(windowTotalTokens(today), 10))
+	result = strings.ReplaceAll(result, "{tokensTodayH}", formatTokensHuman(windowTotalTokens(today)))
+	result = strings.ReplaceAll(result, "{tokenCostToday}", formatCostUsd(windowCostUsd(today)))
+	result = strings.ReplaceAll(result, "{tokenInToday}", strconv.FormatInt(windowField(today, fieldInput), 10))
+	result = strings.ReplaceAll(result, "{tokenOutToday}", strconv.FormatInt(windowField(today, fieldOutput), 10))
+	result = strings.ReplaceAll(result, "{tokenCacheToday}", strconv.FormatInt(windowField(today, fieldCached), 10))
+	result = strings.ReplaceAll(result, "{tokenReasonToday}", strconv.FormatInt(windowField(today, fieldReasoning), 10))
+
+	// 近 7 天
+	result = strings.ReplaceAll(result, "{tokens7d}", strconv.FormatInt(windowTotalTokens(last7d), 10))
+	result = strings.ReplaceAll(result, "{tokens7dH}", formatTokensHuman(windowTotalTokens(last7d)))
+	result = strings.ReplaceAll(result, "{tokenCost7d}", formatCostUsd(windowCostUsd(last7d)))
+
+	// 总窗口
+	result = strings.ReplaceAll(result, "{tokensTotal}", strconv.FormatInt(windowTotalTokens(total), 10))
+	result = strings.ReplaceAll(result, "{tokensTotalH}", formatTokensHuman(windowTotalTokens(total)))
+	result = strings.ReplaceAll(result, "{tokenCostTotal}", formatCostUsd(windowCostUsd(total)))
+
+	// 其他
+	result = strings.ReplaceAll(result, "{topModel}", topModel)
+	result = strings.ReplaceAll(result, "{tokenSessions}", strconv.FormatInt(sessionCount, 10))
+	result = strings.ReplaceAll(result, "{tokenWindowDays}", strconv.FormatInt(int64(windowDays), 10))
+
+	return result
+}
+
+type tokenField int
+
+const (
+	fieldInput tokenField = iota
+	fieldOutput
+	fieldCached
+	fieldReasoning
+)
+
+func windowField(w *common.TokenWindowUsage, f tokenField) int64 {
+	if w == nil {
+		return 0
+	}
+	switch f {
+	case fieldInput:
+		return derefInt64(w.InputTokens)
+	case fieldOutput:
+		return derefInt64(w.OutputTokens)
+	case fieldCached:
+		return derefInt64(w.CachedInputTokens)
+	case fieldReasoning:
+		return derefInt64(w.ReasoningOutputTokens)
+	default:
+		return 0
+	}
+}
+
+// windowTotalTokens 返回窗口总 token 数：优先用服务端写入的 TotalTokens，否则按四项求和。
+func windowTotalTokens(w *common.TokenWindowUsage) int64 {
+	if w == nil {
+		return 0
+	}
+	if w.TotalTokens != nil {
+		return *w.TotalTokens
+	}
+	return derefInt64(w.InputTokens) + derefInt64(w.OutputTokens) +
+		derefInt64(w.CachedInputTokens) + derefInt64(w.ReasoningOutputTokens)
+}
+
+func windowCostUsd(w *common.TokenWindowUsage) float64 {
+	if w == nil || w.EstimatedCostUsd == nil {
+		return 0
+	}
+	return *w.EstimatedCostUsd
+}
+
+func derefInt64(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+// formatTokensHuman 把 token 数格式化为紧凑可读形式：1234567 -> "1.2M"，末尾 ".0" 去除。
+func formatTokensHuman(n int64) string {
+	neg := ""
+	if n < 0 {
+		neg = "-"
+		n = -n
+	}
+	switch {
+	case n >= 1_000_000_000:
+		return neg + trimDotZero(fmt.Sprintf("%.1f", float64(n)/1e9)) + "B"
+	case n >= 1_000_000:
+		return neg + trimDotZero(fmt.Sprintf("%.1f", float64(n)/1e6)) + "M"
+	case n >= 1_000:
+		return neg + trimDotZero(fmt.Sprintf("%.1f", float64(n)/1e3)) + "K"
+	default:
+		return neg + strconv.FormatInt(n, 10)
+	}
+}
+
+func trimDotZero(s string) string {
+	return strings.TrimSuffix(s, ".0")
+}
+
+func formatCostUsd(c float64) string {
+	return fmt.Sprintf("$%.2f", c)
 }
 
 func renderTimeVariables(template string) string {

@@ -22,15 +22,28 @@ struct ExportableConfiguration: Codable {
     var activityGroups: [ActivityGroup]
     var systemPollingInterval: TimeInterval
     var activityPollingInterval: TimeInterval
-    
-    
+
+    // AI Token usage settings (optional for backward-compatible import)
+    var tokenReportingEnabled: Bool
+    var tokenClaudeCodeEnabled: Bool
+    var tokenCodexEnabled: Bool
+    var tokenCursorEnabled: Bool
+    var tokenGeminiEnabled: Bool
+    var tokenClaudeAppEnabled: Bool
+    var tokenOpenClawEnabled: Bool
+    var tokenTraeEnabled: Bool
+    var tokenReportIntervalSeconds: TimeInterval
+    var tokenWindowDays: Int
+
     var exportDate: String = ISO8601DateFormatter().string(from: Date())
     var version: String = "1.0"
-    
+
     enum CodingKeys: String, CodingKey {
-        case secretKey, endpointURL, musicReportingEnabled, systemReportingEnabled, activityReportingEnabled, musicAppWhitelist, activityGroups, systemPollingInterval, activityPollingInterval, exportDate, version
+        case secretKey, endpointURL, musicReportingEnabled, systemReportingEnabled, activityReportingEnabled, musicAppWhitelist, activityGroups, systemPollingInterval, activityPollingInterval
+        case tokenReportingEnabled, tokenClaudeCodeEnabled, tokenCodexEnabled, tokenCursorEnabled, tokenGeminiEnabled, tokenClaudeAppEnabled, tokenOpenClawEnabled, tokenTraeEnabled, tokenReportIntervalSeconds, tokenWindowDays
+        case exportDate, version
     }
-    
+
     init(secretKey: String? = nil,
          endpointURL: String,
          musicReportingEnabled: Bool,
@@ -40,6 +53,16 @@ struct ExportableConfiguration: Codable {
          activityGroups: [ActivityGroup],
          systemPollingInterval: TimeInterval,
          activityPollingInterval: TimeInterval,
+         tokenReportingEnabled: Bool = DefaultSettings.tokenReportingEnabled,
+         tokenClaudeCodeEnabled: Bool = DefaultSettings.tokenClaudeCodeEnabled,
+         tokenCodexEnabled: Bool = DefaultSettings.tokenCodexEnabled,
+         tokenCursorEnabled: Bool = DefaultSettings.tokenCursorEnabled,
+         tokenGeminiEnabled: Bool = DefaultSettings.tokenGeminiEnabled,
+         tokenClaudeAppEnabled: Bool = DefaultSettings.tokenClaudeAppEnabled,
+         tokenOpenClawEnabled: Bool = DefaultSettings.tokenOpenClawEnabled,
+         tokenTraeEnabled: Bool = DefaultSettings.tokenTraeEnabled,
+         tokenReportIntervalSeconds: TimeInterval = DefaultSettings.tokenReportIntervalSeconds,
+         tokenWindowDays: Int = DefaultSettings.tokenWindowDays,
          exportDate: String = ISO8601DateFormatter().string(from: Date()),
          version: String = "1.0") {
         self.secretKey = secretKey
@@ -51,10 +74,20 @@ struct ExportableConfiguration: Codable {
         self.activityGroups = activityGroups
         self.systemPollingInterval = systemPollingInterval
         self.activityPollingInterval = activityPollingInterval
+        self.tokenReportingEnabled = tokenReportingEnabled
+        self.tokenClaudeCodeEnabled = tokenClaudeCodeEnabled
+        self.tokenCodexEnabled = tokenCodexEnabled
+        self.tokenCursorEnabled = tokenCursorEnabled
+        self.tokenGeminiEnabled = tokenGeminiEnabled
+        self.tokenClaudeAppEnabled = tokenClaudeAppEnabled
+        self.tokenOpenClawEnabled = tokenOpenClawEnabled
+        self.tokenTraeEnabled = tokenTraeEnabled
+        self.tokenReportIntervalSeconds = tokenReportIntervalSeconds
+        self.tokenWindowDays = tokenWindowDays
         self.exportDate = exportDate
         self.version = version
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.secretKey = try container.decodeIfPresent(String.self, forKey: .secretKey)
@@ -66,6 +99,16 @@ struct ExportableConfiguration: Codable {
         self.activityGroups = try container.decode([ActivityGroup].self, forKey: .activityGroups)
         self.systemPollingInterval = try container.decode(TimeInterval.self, forKey: .systemPollingInterval)
         self.activityPollingInterval = try container.decode(TimeInterval.self, forKey: .activityPollingInterval)
+        self.tokenReportingEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenReportingEnabled) ?? DefaultSettings.tokenReportingEnabled
+        self.tokenClaudeCodeEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenClaudeCodeEnabled) ?? DefaultSettings.tokenClaudeCodeEnabled
+        self.tokenCodexEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenCodexEnabled) ?? DefaultSettings.tokenCodexEnabled
+        self.tokenCursorEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenCursorEnabled) ?? DefaultSettings.tokenCursorEnabled
+        self.tokenGeminiEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenGeminiEnabled) ?? DefaultSettings.tokenGeminiEnabled
+        self.tokenClaudeAppEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenClaudeAppEnabled) ?? DefaultSettings.tokenClaudeAppEnabled
+        self.tokenOpenClawEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenOpenClawEnabled) ?? DefaultSettings.tokenOpenClawEnabled
+        self.tokenTraeEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenTraeEnabled) ?? DefaultSettings.tokenTraeEnabled
+        self.tokenReportIntervalSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .tokenReportIntervalSeconds) ?? DefaultSettings.tokenReportIntervalSeconds
+        self.tokenWindowDays = try container.decodeIfPresent(Int.self, forKey: .tokenWindowDays) ?? DefaultSettings.tokenWindowDays
         self.exportDate = try container.decodeIfPresent(String.self, forKey: .exportDate) ?? ISO8601DateFormatter().string(from: Date())
         self.version = try container.decodeIfPresent(String.self, forKey: .version) ?? "1.0"
     }
@@ -106,8 +149,71 @@ class AppConfiguration: ObservableObject {
             UserDefaults.standard.set(activityReportingEnabled, forKey: "activityReportingEnabled")
         }
     }
-    
-    
+
+    // AI Token Usage Reporting
+    @Published var tokenReportingEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(tokenReportingEnabled, forKey: "tokenReportingEnabled")
+        }
+    }
+
+    @Published var tokenClaudeCodeEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(tokenClaudeCodeEnabled, forKey: "tokenClaudeCodeEnabled")
+        }
+    }
+
+    @Published var tokenCodexEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(tokenCodexEnabled, forKey: "tokenCodexEnabled")
+        }
+    }
+
+    @Published var tokenCursorEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(tokenCursorEnabled, forKey: "tokenCursorEnabled")
+        }
+    }
+
+    @Published var tokenGeminiEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(tokenGeminiEnabled, forKey: "tokenGeminiEnabled")
+        }
+    }
+
+    @Published var tokenClaudeAppEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(tokenClaudeAppEnabled, forKey: "tokenClaudeAppEnabled")
+        }
+    }
+
+    @Published var tokenOpenClawEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(tokenOpenClawEnabled, forKey: "tokenOpenClawEnabled")
+        }
+    }
+
+    @Published var tokenTraeEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(tokenTraeEnabled, forKey: "tokenTraeEnabled")
+        }
+    }
+
+    /// Token report interval (seconds)
+    @Published var tokenReportIntervalSeconds: TimeInterval {
+        didSet {
+            UserDefaults.standard.set(tokenReportIntervalSeconds, forKey: "tokenReportIntervalSeconds")
+        }
+    }
+
+    /// Rolling window for the `total` aggregate (days)
+    @Published var tokenWindowDays: Int {
+        didSet {
+            UserDefaults.standard.set(tokenWindowDays, forKey: "tokenWindowDays")
+        }
+    }
+
+
     // App Lists
     @Published var musicAppWhitelist: [String] {
         didSet {
@@ -148,8 +254,19 @@ class AppConfiguration: ObservableObject {
         self.musicReportingEnabled = UserDefaults.standard.object(forKey: "musicReportingEnabled") as? Bool ?? DefaultSettings.musicReportingEnabled
         self.systemReportingEnabled = UserDefaults.standard.object(forKey: "systemReportingEnabled") as? Bool ?? DefaultSettings.systemReportingEnabled
         self.activityReportingEnabled = UserDefaults.standard.object(forKey: "activityReportingEnabled") as? Bool ?? DefaultSettings.activityReportingEnabled
-        
-        
+
+        // AI Token usage settings
+        self.tokenReportingEnabled = UserDefaults.standard.object(forKey: "tokenReportingEnabled") as? Bool ?? DefaultSettings.tokenReportingEnabled
+        self.tokenClaudeCodeEnabled = UserDefaults.standard.object(forKey: "tokenClaudeCodeEnabled") as? Bool ?? DefaultSettings.tokenClaudeCodeEnabled
+        self.tokenCodexEnabled = UserDefaults.standard.object(forKey: "tokenCodexEnabled") as? Bool ?? DefaultSettings.tokenCodexEnabled
+        self.tokenCursorEnabled = UserDefaults.standard.object(forKey: "tokenCursorEnabled") as? Bool ?? DefaultSettings.tokenCursorEnabled
+        self.tokenGeminiEnabled = UserDefaults.standard.object(forKey: "tokenGeminiEnabled") as? Bool ?? DefaultSettings.tokenGeminiEnabled
+        self.tokenClaudeAppEnabled = UserDefaults.standard.object(forKey: "tokenClaudeAppEnabled") as? Bool ?? DefaultSettings.tokenClaudeAppEnabled
+        self.tokenOpenClawEnabled = UserDefaults.standard.object(forKey: "tokenOpenClawEnabled") as? Bool ?? DefaultSettings.tokenOpenClawEnabled
+        self.tokenTraeEnabled = UserDefaults.standard.object(forKey: "tokenTraeEnabled") as? Bool ?? DefaultSettings.tokenTraeEnabled
+        self.tokenReportIntervalSeconds = UserDefaults.standard.object(forKey: "tokenReportIntervalSeconds") as? TimeInterval ?? DefaultSettings.tokenReportIntervalSeconds
+        self.tokenWindowDays = UserDefaults.standard.object(forKey: "tokenWindowDays") as? Int ?? DefaultSettings.tokenWindowDays
+
         // App lists
         self.musicAppWhitelist = UserDefaults.standard.stringArray(forKey: "musicAppWhitelist") ?? DefaultSettings.musicAppWhitelist
         
@@ -176,18 +293,32 @@ class AppConfiguration: ObservableObject {
         let keys = [
             "secretKey", "endpointURL",
             "musicReportingEnabled", "systemReportingEnabled", "activityReportingEnabled",
+            "tokenReportingEnabled", "tokenClaudeCodeEnabled", "tokenCodexEnabled",
+            "tokenCursorEnabled", "tokenGeminiEnabled",
+            "tokenClaudeAppEnabled", "tokenOpenClawEnabled", "tokenTraeEnabled",
+            "tokenReportIntervalSeconds", "tokenWindowDays",
             "musicAppWhitelist",
             "activityGroups",
             "systemPollingInterval", "activityPollingInterval"        ]
-        
+
         keys.forEach { defaults.removeObject(forKey: $0) }
-        
+
         // Reset to default values
         self.secretKey = DefaultSettings.secretKey
         self.endpointURL = DefaultSettings.endpointURL
         self.musicReportingEnabled = DefaultSettings.musicReportingEnabled
         self.systemReportingEnabled = DefaultSettings.systemReportingEnabled
         self.activityReportingEnabled = DefaultSettings.activityReportingEnabled
+        self.tokenReportingEnabled = DefaultSettings.tokenReportingEnabled
+        self.tokenClaudeCodeEnabled = DefaultSettings.tokenClaudeCodeEnabled
+        self.tokenCodexEnabled = DefaultSettings.tokenCodexEnabled
+        self.tokenCursorEnabled = DefaultSettings.tokenCursorEnabled
+        self.tokenGeminiEnabled = DefaultSettings.tokenGeminiEnabled
+        self.tokenClaudeAppEnabled = DefaultSettings.tokenClaudeAppEnabled
+        self.tokenOpenClawEnabled = DefaultSettings.tokenOpenClawEnabled
+        self.tokenTraeEnabled = DefaultSettings.tokenTraeEnabled
+        self.tokenReportIntervalSeconds = DefaultSettings.tokenReportIntervalSeconds
+        self.tokenWindowDays = DefaultSettings.tokenWindowDays
         self.musicAppWhitelist = DefaultSettings.musicAppWhitelist
         self.activityGroups = DefaultSettings.activityGroups
         self.systemPollingInterval = DefaultSettings.systemPollingInterval
@@ -209,8 +340,19 @@ class AppConfiguration: ObservableObject {
             musicAppWhitelist: musicAppWhitelist,
             activityGroups: activityGroups,
             systemPollingInterval: systemPollingInterval,
-            activityPollingInterval: activityPollingInterval        )
-        
+            activityPollingInterval: activityPollingInterval,
+            tokenReportingEnabled: tokenReportingEnabled,
+            tokenClaudeCodeEnabled: tokenClaudeCodeEnabled,
+            tokenCodexEnabled: tokenCodexEnabled,
+            tokenCursorEnabled: tokenCursorEnabled,
+            tokenGeminiEnabled: tokenGeminiEnabled,
+            tokenClaudeAppEnabled: tokenClaudeAppEnabled,
+            tokenOpenClawEnabled: tokenOpenClawEnabled,
+            tokenTraeEnabled: tokenTraeEnabled,
+            tokenReportIntervalSeconds: tokenReportIntervalSeconds,
+            tokenWindowDays: tokenWindowDays
+        )
+
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         
@@ -263,7 +405,17 @@ class AppConfiguration: ObservableObject {
         self.musicAppWhitelist = config.musicAppWhitelist
         self.activityGroups = config.activityGroups
         self.systemPollingInterval = config.systemPollingInterval
-        self.activityPollingInterval = config.activityPollingInterval        
+        self.activityPollingInterval = config.activityPollingInterval
+        self.tokenReportingEnabled = config.tokenReportingEnabled
+        self.tokenClaudeCodeEnabled = config.tokenClaudeCodeEnabled
+        self.tokenCodexEnabled = config.tokenCodexEnabled
+        self.tokenCursorEnabled = config.tokenCursorEnabled
+        self.tokenGeminiEnabled = config.tokenGeminiEnabled
+        self.tokenClaudeAppEnabled = config.tokenClaudeAppEnabled
+        self.tokenOpenClawEnabled = config.tokenOpenClawEnabled
+        self.tokenTraeEnabled = config.tokenTraeEnabled
+        self.tokenReportIntervalSeconds = config.tokenReportIntervalSeconds
+        self.tokenWindowDays = config.tokenWindowDays
         return nil
     }
     

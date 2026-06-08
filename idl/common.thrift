@@ -31,6 +31,37 @@ struct Activity {
     2: required i64 ts;  // 毫秒时间戳
 }
 
+// 单模型 token 用量（客户端上报，用于服务端定价与 topModel 推导）
+struct TokenModelUsage {
+    1: required string model;               // 模型名，如 claude-opus-4-8
+    2: optional i64 inputTokens;
+    3: optional i64 outputTokens;
+    4: optional i64 cachedInputTokens;
+    5: optional i64 reasoningOutputTokens;
+}
+
+// 某时间窗口的 token 用量
+struct TokenWindowUsage {
+    1: optional i64 inputTokens;
+    2: optional i64 outputTokens;
+    3: optional i64 cachedInputTokens;
+    4: optional i64 reasoningOutputTokens;
+    5: optional i64 totalTokens;            // 服务端计算 = 四项之和
+    6: optional double estimatedCostUsd;    // 服务端计算（pricing）
+    7: optional list<TokenModelUsage> byModel;  // 客户端上报 top-N 模型
+}
+
+// Token 用量块（随快照上报与存储，供个性签名渲染）
+struct TokenUsage {
+    1: optional TokenWindowUsage today;     // 本地自然日
+    2: optional TokenWindowUsage last7d;    // 近 7 天
+    3: optional TokenWindowUsage total;     // 滚动窗口（windowDays 天）
+    4: optional string topModel;            // 当日用量最高的模型
+    5: optional i64 sessionCount;           // 当日会话数
+    6: optional i32 windowDays;             // total 窗口天数（用于展示标签）
+    7: required i64 ts;                      // 计算时间（毫秒）
+}
+
 // 上报事件结构
 struct ReportEvent {
     1: required string version = "1";
@@ -38,6 +69,7 @@ struct ReportEvent {
     3: optional Music music;
     4: optional Activity activity;
     5: optional string idempotencyKey;  // 幂等键
+    6: optional TokenUsage tokens;       // token 用量
 }
 
 // 状态快照结构
@@ -46,6 +78,7 @@ struct StatusSnapshot {
     2: optional Music music;
     3: optional Activity activity;
     4: required i64 lastUpdateTs;
+    5: optional TokenUsage tokens;       // token 用量
 }
 
 // 时间窗口定义

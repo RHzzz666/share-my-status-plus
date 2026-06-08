@@ -48,15 +48,18 @@ struct ReportEvent: Codable {
     let music: MusicInfo?
     let activity: ActivityInfo?
     let idempotencyKey: String?
-    
-    init(system: SystemInfo? = nil, 
-         music: MusicInfo? = nil, 
-         activity: ActivityInfo? = nil) {
+    let tokens: TokenUsageDTO?
+
+    init(system: SystemInfo? = nil,
+         music: MusicInfo? = nil,
+         activity: ActivityInfo? = nil,
+         tokens: TokenUsageDTO? = nil) {
         self.version = "1"
         self.system = system
         self.music = music
         self.activity = activity
         self.idempotencyKey = UUID().uuidString
+        self.tokens = tokens
     }
 }
 
@@ -66,6 +69,7 @@ struct StatusSnapshot: Codable {
     let music: MusicInfo?
     let activity: ActivityInfo?
     let lastUpdateTs: Int64
+    let tokens: TokenUsageDTO?
 }
 
 struct ClientResources: Codable {
