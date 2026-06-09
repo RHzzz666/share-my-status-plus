@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"share-my-status/domain/state"
 	"share-my-status/domain/user"
 	"share-my-status/model"
+	"share-my-status/pkg/dbutil"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
@@ -113,6 +115,77 @@ func TestTokenSignatureE2E_FromWireJSON(t *testing.T) {
 
 func i64p(v int64) *int64 { return &v }
 func i32p(v int32) *int32 { return &v }
+
+// TestTokenSignatureE2E_ConcurrentClearNotLost regresses the read-merge-write race:
+// processEvent 现在在事务+行锁内合并快照,因此「关闭上报时的一次性清零块」不会被
+// 并发的系统上报用旧快照覆盖回去。无锁实现下本测试会间歇性失败。
+func TestTokenSignatureE2E_ConcurrentClearNotLost(t *testing.T) {
+	ctx := context.Background()
+	db, rdb := openE2E(t)
+
+	userSvc := user.NewUserService(db, rdb)
+	u, err := userSvc.CreateUser(fmt.Sprintf("e2e-race-%d", time.Now().UnixNano()))
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	stateSvc := state.NewStateService(db, rdb, nil, userSvc)
+
+	// 先落一个非零 token 块。
+	seed := &common.ReportEvent{
+		Version: "1",
+		Tokens: &common.TokenUsage{
+			Ts:    time.Now().UnixMilli(),
+			Today: &common.TokenWindowUsage{InputTokens: i64p(123_456)},
+		},
+	}
+	if _, err := stateSvc.BatchReport(ctx, u.ID, []*common.ReportEvent{seed}); err != nil {
+		t.Fatalf("seed report: %v", err)
+	}
+
+	// 并发:20 个系统上报 + 1 个清零块(非 nil、空窗口)同时进行。
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			pct := 0.5
+			ev := &common.ReportEvent{
+				Version: "1",
+				System:  &common.System{BatteryPct: &pct, Ts: time.Now().UnixMilli() + int64(i)},
+			}
+			if _, err := stateSvc.BatchReport(ctx, u.ID, []*common.ReportEvent{ev}); err != nil {
+				t.Errorf("system report %d: %v", i, err)
+			}
+		}(i)
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		clear := &common.ReportEvent{
+			Version: "1",
+			Tokens:  &common.TokenUsage{Ts: time.Now().UnixMilli()},
+		}
+		if _, err := stateSvc.BatchReport(ctx, u.ID, []*common.ReportEvent{clear}); err != nil {
+			t.Errorf("clear report: %v", err)
+		}
+	}()
+	wg.Wait()
+
+	// 终态:token 块必须是清零块(Today 为空),系统信息存在。
+	snapshot, err := dbutil.GetCurrentStateFromDB(ctx, db, u.ID)
+	if err != nil {
+		t.Fatalf("read snapshot: %v", err)
+	}
+	if snapshot.Tokens == nil {
+		t.Fatal("tokens block missing entirely; want the zeroed block")
+	}
+	if snapshot.Tokens.Today != nil {
+		t.Fatalf("clear was lost: tokens.Today = %+v, want nil (zeroed)", snapshot.Tokens.Today)
+	}
+	if snapshot.System == nil {
+		t.Fatal("system block missing; concurrent system reports should have landed")
+	}
+}
 
 // TestTokenSignatureE2E proves the full token→signature chain through a real DB:
 // client reports a Tokens block → backend prices & stores it in current_state.snapshot

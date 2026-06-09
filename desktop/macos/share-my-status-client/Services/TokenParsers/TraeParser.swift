@@ -104,21 +104,24 @@ nonisolated struct TraeParser: TokenLogParser {
                     .map { Self.resolveRelative($0, relativeTo: tracesPath) } ?? tracesPath.resolvingSymlinksInPath().path
                 if !seenTraceRealPaths.insert(realPath).inserted { continue }
 
+                // Stat the file ONCE; the same key feeds the mtime pre-filter,
+                // the cache lookup, and the store below.
+                guard let key = TokenScanCache.fileKey(for: tracesPath) else { continue }
+
                 // Bound work by mtime: a file last modified before `since` (minus a
                 // 1-day slack, since one file holds a whole session's spans) can't
                 // contribute to any window we care about.
-                if let key = TokenScanCache.fileKey(for: tracesPath),
-                   Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
+                if Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
                     continue
                 }
 
-                if let cached = cache.cachedEntries(for: tracesPath) {
+                if let cached = cache.cachedEntries(for: tracesPath, key: key) {
                     out.append(contentsOf: cached)
                     continue
                 }
 
                 let entries = Self.parseSessionDir(sessionDir, tracesPath: tracesPath)
-                cache.store(entries, for: tracesPath)
+                cache.store(entries, for: tracesPath, key: key)
                 out.append(contentsOf: entries)
             }
         }

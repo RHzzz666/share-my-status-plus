@@ -23,6 +23,10 @@ func TestFormatTokensHuman(t *testing.T) {
 		1_234_567:     "1.2M",
 		1_000_000_000: "1B",
 		-1500:         "-1.5K",
+		// 进位边界：%.1f 会把 999.95K+ 舍入成 1000.0，应晋升单位而不是显示 "1000K"/"1000M"
+		999_949:     "999.9K",
+		999_999:     "1M",
+		999_950_000: "1B",
 	}
 	for n, want := range cases {
 		if got := formatTokensHuman(n); got != want {

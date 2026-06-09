@@ -77,6 +77,27 @@ func TestPriceWindow_ByModelOnly_DerivesAggregates(t *testing.T) {
 	}
 }
 
+// 兜底推导 topModel 时应跳过零用量条目(如 "<synthetic>")与合成的 "other" 折叠项。
+func TestTopModelOfWindow_SkipsZeroAndOther(t *testing.T) {
+	w := &common.TokenWindowUsage{
+		ByModel: []*common.TokenModelUsage{
+			{Model: "<synthetic>"}, // 全零
+			{Model: "other", InputTokens: i64p(999)},
+			{Model: "claude-opus-4-8", InputTokens: i64p(100)},
+		},
+	}
+	if got := topModelOfWindow(w); got != "claude-opus-4-8" {
+		t.Fatalf("topModelOfWindow = %q, want claude-opus-4-8", got)
+	}
+	// 只有零用量条目时返回空串,而不是 "<synthetic>"
+	onlyZero := &common.TokenWindowUsage{
+		ByModel: []*common.TokenModelUsage{{Model: "<synthetic>"}},
+	}
+	if got := topModelOfWindow(onlyZero); got != "" {
+		t.Fatalf("topModelOfWindow(all-zero) = %q, want \"\"", got)
+	}
+}
+
 func TestPriceTokenUsage_DerivesTopModel(t *testing.T) {
 	in := &common.TokenUsage{
 		Ts: 123,

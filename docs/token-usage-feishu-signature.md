@@ -63,6 +63,8 @@ macOS 客户端：扫描本地 AI 工具日志
 | claude-opus | 15 | 75 | 1.5 | 75 |
 | claude-sonnet | 3 | 15 | 0.30 | 15 |
 | claude-haiku | 0.80 | 4 | 0.08 | 4 |
+| gpt-5（Codex 默认族,含 gpt-5-codex） | 1.25 | 10 | 0.125 | 10 |
+| gpt-5-mini/nano | 0.25 | 2 | 0.025 | 2 |
 | gpt-4o | 2.5 | 10 | 1.25 | 10 |
 | gpt-4o-mini（含 gpt-4.1-mini/nano） | 0.15 | 0.60 | 0.075 | 0.60 |
 | o-series（o1/o3/o4） | 15 | 60 | 7.5 | 60 |

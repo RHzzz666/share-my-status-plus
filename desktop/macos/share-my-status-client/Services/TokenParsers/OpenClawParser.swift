@@ -60,21 +60,24 @@ nonisolated struct OpenClawParser: TokenLogParser {
             for sf in sessionFiles {
                 let file = sf.url
 
+                // Stat the file ONCE; the same key feeds the mtime pre-filter,
+                // the cache lookup, and the store below.
+                guard let key = TokenScanCache.fileKey(for: file) else { continue }
+
                 // Bound work by mtime: a file last modified before `since` cannot
                 // contain entries inside any window we care about. (Cheap pre-filter,
                 // with a 1-day slack since one file may hold a whole day's records.)
-                if let key = TokenScanCache.fileKey(for: file),
-                   Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
+                if Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
                     continue
                 }
 
-                if let cached = cache.cachedEntries(for: file) {
+                if let cached = cache.cachedEntries(for: file, key: key) {
                     out.append(contentsOf: cached)
                     continue
                 }
 
                 let entries = Self.parseFile(file, sessionId: sf.sessionId, project: sf.agentId)
-                cache.store(entries, for: file)
+                cache.store(entries, for: file, key: key)
                 out.append(contentsOf: entries)
             }
         }

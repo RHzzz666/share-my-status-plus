@@ -193,6 +193,13 @@ nonisolated struct TokenScanCache: Codable {
     /// path -> (file identity, parsed entries)
     var files: [String: CachedFile] = [:]
 
+    /// True when the cache changed since it was last persisted. Not serialized —
+    /// `TokenUsageService` uses it to skip re-encoding/rewriting an unchanged
+    /// multi-MB cache file every tick, and resets it after a successful write.
+    var dirty: Bool = false
+
+    private enum CodingKeys: String, CodingKey { case files }
+
     struct CachedFile: Codable {
         let key: TokenScanFileKey
         let entries: [CachedEntry]
@@ -200,17 +207,26 @@ nonisolated struct TokenScanCache: Codable {
 
     /// Return cached entries for `url` iff its identity matches the cached key.
     func cachedEntries(for url: URL) -> [TokenEntry]? {
-        guard let cf = files[url.path],
-              let currentKey = TokenScanCache.fileKey(for: url),
-              cf.key == currentKey else {
-            return nil
-        }
+        guard let currentKey = TokenScanCache.fileKey(for: url) else { return nil }
+        return cachedEntries(for: url, key: currentKey)
+    }
+
+    /// Variant taking a precomputed identity, so parsers that already stat'ed the
+    /// file (e.g. for a window pre-filter) don't trigger a second syscall.
+    func cachedEntries(for url: URL, key currentKey: TokenScanFileKey) -> [TokenEntry]? {
+        guard let cf = files[url.path], cf.key == currentKey else { return nil }
         return cf.entries.map { $0.entry }
     }
 
     mutating func store(_ entries: [TokenEntry], for url: URL) {
         guard let key = TokenScanCache.fileKey(for: url) else { return }
+        store(entries, for: url, key: key)
+    }
+
+    /// Variant taking a precomputed identity (see `cachedEntries(for:key:)`).
+    mutating func store(_ entries: [TokenEntry], for url: URL, key: TokenScanFileKey) {
         files[url.path] = CachedFile(key: key, entries: entries.map { CachedEntry($0) })
+        dirty = true
     }
 
     /// Compute a file's identity (path + size + mtime). nil when the file is gone.

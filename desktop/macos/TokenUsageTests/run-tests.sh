@@ -15,11 +15,7 @@ swiftc -O \
   "$CLIENT_DIR/Models/Domain/TokenModels.swift" \
   "$CLIENT_DIR/Models/API/StateModels.swift" \
   "$CLIENT_DIR/Models/API/APIModels.swift" \
-  "$CLIENT_DIR/Services/TokenParsers/TokenLogParser.swift" \
-  "$CLIENT_DIR/Services/TokenParsers/ClaudeCodeParser.swift" \
-  "$CLIENT_DIR/Services/TokenParsers/CodexParser.swift" \
-  "$CLIENT_DIR/Services/TokenParsers/GeminiParser.swift" \
-  "$CLIENT_DIR/Services/TokenParsers/CursorParser.swift" \
+  "$CLIENT_DIR/Services/TokenParsers/"*.swift \
   "$SCRIPT_DIR/main.swift" \
   -lsqlite3 \
   -o "$OUT"

@@ -57,15 +57,18 @@ nonisolated struct ClaudeCodeParser: TokenLogParser {
                 // kaboo does — their tokens must not be double-counted.
                 if file.path.contains("/subagents/") { continue }
 
+                // Stat the file ONCE; the same key feeds the mtime pre-filter,
+                // the cache lookup, and the store below.
+                guard let key = TokenScanCache.fileKey(for: file) else { continue }
+
                 // Bound work by mtime: a file last modified before `since` cannot
                 // contain entries inside any window we care about. (Cheap pre-filter,
                 // with a 1-day slack since one file may hold a whole day's records.)
-                if let key = TokenScanCache.fileKey(for: file),
-                   Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
+                if Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
                     continue
                 }
 
-                if let cached = cache.cachedEntries(for: file) {
+                if let cached = cache.cachedEntries(for: file, key: key) {
                     out.append(contentsOf: cached)
                     continue
                 }
@@ -73,7 +76,7 @@ nonisolated struct ClaudeCodeParser: TokenLogParser {
                 let project = Self.extractProject(file: file, projectsDir: projectsDir)
                 let sessionId = file.deletingPathExtension().lastPathComponent
                 let entries = Self.parseFile(file, project: project, sessionId: sessionId)
-                cache.store(entries, for: file)
+                cache.store(entries, for: file, key: key)
                 out.append(contentsOf: entries)
             }
         }
@@ -96,69 +99,93 @@ nonisolated struct ClaudeCodeParser: TokenLogParser {
         }
     }
 
+    /// A usage record collected during the single file pass, before the
+    /// reasoning carve-out (which needs the turn's COMPLETED char counts —
+    /// a turn's content may span multiple lines).
+    private struct PendingUsage {
+        let ts: Date
+        let model: String
+        let stableID: String
+        let input: Int64
+        let output: Int64
+        let cached: Int64
+        let reasoning: Int64
+    }
+
     static func parseFile(_ url: URL, project: String, sessionId: String) -> [TokenEntry] {
-        // Pass 1: aggregate each turn's thinking vs other-output char footprint.
+        // Single pass: for each assistant line simultaneously (a) aggregate the
+        // turn's thinking-vs-other char footprint keyed by its stable id, and
+        // (b) when the line carries usage, collect a lightweight pending record.
         var turns: [String: TurnSplit] = [:]
+        var pending: [PendingUsage] = []
         TokenParseHelpers.forEachJSONLLine(at: url) { obj in
             guard (obj["type"] as? String) == "assistant",
-                  let msg = obj["message"] as? [String: Any],
-                  let content = msg["content"] as? [[String: Any]] else { return }
-            var id = msg["id"] as? String ?? ""
-            if id.isEmpty { id = obj["uuid"] as? String ?? "" }
-            if id.isEmpty { return }
-            let acc = turns[id] ?? TurnSplit()
-            turns[id] = acc
-            for part in content {
-                switch part["type"] as? String {
-                case "thinking":
-                    let s = part["thinking"] as? String ?? ""
-                    if !s.isEmpty, acc.mark("t", s) { acc.thinkingChars += s.count }
-                case "text":
-                    let s = part["text"] as? String ?? ""
-                    if !s.isEmpty, acc.mark("x", s) { acc.otherChars += s.count }
-                case "tool_use":
-                    let name = part["name"] as? String ?? ""
-                    var inputJSON = ""
-                    if let input = part["input"],
-                       let d = try? JSONSerialization.data(withJSONObject: input),
-                       let s = String(data: d, encoding: .utf8) {
-                        inputJSON = s
-                    }
-                    let n = name.count + inputJSON.count
-                    if n > 0, acc.mark("u", name + "\u{0}" + inputJSON) { acc.otherChars += n }
-                default:
-                    break
-                }
-            }
-        }
-
-        // Pass 2: emit entries from assistant records that carry usage.
-        var entries: [TokenEntry] = []
-        TokenParseHelpers.forEachJSONLLine(at: url) { obj in
-            guard let tsStr = obj["timestamp"] as? String,
-                  let ts = TokenParseHelpers.parseTimestamp(tsStr) else { return }
-            guard (obj["type"] as? String) == "assistant",
-                  let msg = obj["message"] as? [String: Any],
-                  let usage = msg["usage"] as? [String: Any] else { return }
-
-            var model = msg["model"] as? String ?? ""
-            if model.isEmpty { model = "unknown" }
+                  let msg = obj["message"] as? [String: Any] else { return }
 
             let localUUID = obj["uuid"] as? String ?? ""
             let apiMsgID = msg["id"] as? String ?? ""
             let stableID = apiMsgID.isEmpty ? localUUID : apiMsgID
 
-            var input = TokenParseHelpers.int64(usage, "input_tokens")
-            var output = TokenParseHelpers.int64(usage, "output_tokens")
-            let cached = TokenParseHelpers.int64(usage, "cache_read_input_tokens")
-            var reasoning = TokenParseHelpers.int64(usage, "reasoning_output_tokens")
-            _ = input // keep symmetric with kaboo; no normalization for claude input
+            // (a) char footprint for the reasoning carve-out.
+            if !stableID.isEmpty, let content = msg["content"] as? [[String: Any]] {
+                let acc = turns[stableID] ?? TurnSplit()
+                turns[stableID] = acc
+                for part in content {
+                    switch part["type"] as? String {
+                    case "thinking":
+                        let s = part["thinking"] as? String ?? ""
+                        if !s.isEmpty, acc.mark("t", s) { acc.thinkingChars += s.count }
+                    case "text":
+                        let s = part["text"] as? String ?? ""
+                        if !s.isEmpty, acc.mark("x", s) { acc.otherChars += s.count }
+                    case "tool_use":
+                        let name = part["name"] as? String ?? ""
+                        var inputJSON = ""
+                        if let input = part["input"],
+                           let d = try? JSONSerialization.data(withJSONObject: input),
+                           let s = String(data: d, encoding: .utf8) {
+                            inputJSON = s
+                        }
+                        let n = name.count + inputJSON.count
+                        if n > 0, acc.mark("u", name + "\u{0}" + inputJSON) { acc.otherChars += n }
+                    default:
+                        break
+                    }
+                }
+            }
+
+            // (b) pending usage record (carve applied after the pass completes).
+            guard let tsStr = obj["timestamp"] as? String,
+                  let ts = TokenParseHelpers.parseTimestamp(tsStr),
+                  let usage = msg["usage"] as? [String: Any] else { return }
+
+            var model = msg["model"] as? String ?? ""
+            if model.isEmpty { model = "unknown" }
+
+            pending.append(PendingUsage(
+                ts: ts,
+                model: model,
+                stableID: stableID,
+                input: TokenParseHelpers.int64(usage, "input_tokens"),
+                output: TokenParseHelpers.int64(usage, "output_tokens"),
+                cached: TokenParseHelpers.int64(usage, "cache_read_input_tokens"),
+                reasoning: TokenParseHelpers.int64(usage, "reasoning_output_tokens")
+            ))
+        }
+
+        // Emit: apply the Anthropic reasoning carve-out now that every turn's
+        // char counts are complete.
+        var entries: [TokenEntry] = []
+        entries.reserveCapacity(pending.count)
+        for p in pending {
+            var output = p.output
+            var reasoning = p.reasoning
 
             // Anthropic folds extended-thinking into output_tokens and reports no
             // separate reasoning count. When the native field is absent, carve the
             // estimated thinking share OUT of output (turn total unchanged).
-            if reasoning == 0, output > 0, TokenParseHelpers.isAnthropicModel(model),
-               let tc = turns[stableID] {
+            if reasoning == 0, output > 0, TokenParseHelpers.isAnthropicModel(p.model),
+               let tc = turns[p.stableID] {
                 let est = splitOutputTokens(thinkingChars: tc.thinkingChars,
                                             otherChars: tc.otherChars,
                                             outputTokens: output)
@@ -167,19 +194,18 @@ nonisolated struct ClaudeCodeParser: TokenLogParser {
                     output -= est
                 }
             }
-            input = TokenParseHelpers.int64(usage, "input_tokens")
 
             entries.append(TokenEntry(
                 source: "claude-code",
-                model: model,
+                model: p.model,
                 project: project,
-                timestamp: ts,
-                inputTokens: input,
+                timestamp: p.ts,
+                inputTokens: p.input,
                 outputTokens: output,
-                cachedInputTokens: cached,
+                cachedInputTokens: p.cached,
                 reasoningOutputTokens: reasoning,
                 sessionId: sessionId,
-                messageId: stableID
+                messageId: p.stableID
             ))
         }
         return entries

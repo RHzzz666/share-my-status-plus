@@ -75,18 +75,20 @@ nonisolated struct GeminiParser: TokenLogParser {
         }.filter { $0.path.contains("/chats/") }
 
         for file in files {
+            // Stat the file ONCE; the same key feeds the mtime pre-filter,
+            // the cache lookup, and the store below.
+            guard let key = TokenScanCache.fileKey(for: file) else { continue }
             // Bound work by mtime: a file untouched before `since` (minus a 1-day
             // slack, since one session file can span a day) can't matter.
-            if let key = TokenScanCache.fileKey(for: file),
-               Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
+            if Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
                 continue
             }
-            if let cached = cache.cachedEntries(for: file) {
+            if let cached = cache.cachedEntries(for: file, key: key) {
                 out.append(contentsOf: cached)
                 continue
             }
             let entries = Self.parseFile(file)
-            cache.store(entries, for: file)
+            cache.store(entries, for: file, key: key)
             out.append(contentsOf: entries)
         }
         return out

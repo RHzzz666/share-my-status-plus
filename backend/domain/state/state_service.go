@@ -16,6 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type StateService struct {
@@ -115,26 +116,40 @@ func (s *StateService) processEvent(ctx context.Context, userID uint64, event *c
 		Tokens:       priceTokenUsage(event.Tokens),
 	}
 
-	// 获取现有状态并进行合并
-	var currentState model.CurrentState
-	err := s.db.Where("user_id = ?", userID).First(&currentState).Error
-
+	// 在事务内用行锁完成 读-合并-写，串行化同一用户的并发上报。
+	// 否则两个并发事件会基于同一旧快照各自合并、互相覆盖（丢失更新）——
+	// 对周期性上报会在下个周期自愈，但「关闭 token 上报时的一次性清零块」
+	// 一旦被并发的系统/音乐事件用旧快照覆盖回去，就再也没有机会清除了。
 	var mergedSnapshot *common.StatusSnapshot
-	isNotFound, err := dbutil.HandleRecordNotFoundError(err)
-	if isNotFound {
-		// 如果是首次创建，直接使用新快照
-		mergedSnapshot = newSnapshot
-	} else if err != nil {
-		return fmt.Errorf("failed to get current state: %w", err)
-	} else {
+	txErr := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var currentState model.CurrentState
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("user_id = ?", userID).First(&currentState).Error
+
+		isNotFound, err := dbutil.HandleRecordNotFoundError(err)
+		if isNotFound {
+			// 首次创建：用 ON CONFLICT 兜底并发的首次插入。
+			mergedSnapshot = newSnapshot
+			currentState = model.CurrentState{
+				UserID:   userID,
+				Snapshot: datatypes.NewJSONType(*mergedSnapshot),
+			}
+			return tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "user_id"}},
+				UpdateAll: true,
+			}).Create(&currentState).Error
+		} else if err != nil {
+			return fmt.Errorf("failed to get current state: %w", err)
+		}
+
 		// 合并现有状态和新快照
 		existingSnapshot := currentState.Snapshot.Data()
 		mergedSnapshot = s.mergeSnapshots(&existingSnapshot, newSnapshot)
-	}
-
-	// 更新当前状态（保存合并后的完整状态）
-	if err := s.updateCurrentState(ctx, userID, mergedSnapshot); err != nil {
-		return fmt.Errorf("failed to update current state: %w", err)
+		currentState.Snapshot = datatypes.NewJSONType(*mergedSnapshot)
+		return tx.Save(&currentState).Error
+	})
+	if txErr != nil {
+		return fmt.Errorf("failed to update current state: %w", txErr)
 	}
 
 	// 只有当事件包含音乐信息时才需要保存历史记录（用于音乐统计）
@@ -159,29 +174,6 @@ func (s *StateService) processEvent(ctx context.Context, userID uint64, event *c
 	}
 
 	return nil
-}
-
-// updateCurrentState 更新当前状态
-// 直接保存传入的完整快照，不做合并处理（合并逻辑在调用方完成）
-func (s *StateService) updateCurrentState(ctx context.Context, userID uint64, snapshot *common.StatusSnapshot) error {
-	var currentState model.CurrentState
-	err := s.db.Where("user_id = ?", userID).First(&currentState).Error
-
-	isNotFound, err := dbutil.HandleRecordNotFoundError(err)
-	if isNotFound {
-		// 创建新的当前状态记录
-		currentState = model.CurrentState{
-			UserID:   userID,
-			Snapshot: datatypes.NewJSONType(*snapshot),
-		}
-		return s.db.Create(&currentState).Error
-	} else if err != nil {
-		return err
-	}
-
-	// 更新现有记录
-	currentState.Snapshot = datatypes.NewJSONType(*snapshot)
-	return s.db.Save(&currentState).Error
 }
 
 // mergeSnapshots 合并两个状态快照

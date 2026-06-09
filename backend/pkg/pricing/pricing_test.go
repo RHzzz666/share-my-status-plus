@@ -15,6 +15,11 @@ func TestDetectFamily(t *testing.T) {
 		"gpt-4o":                 "gpt-4o",
 		"gpt-4o-2024-08-06":      "gpt-4o",
 		"gpt-4o-mini":            "gpt-4o-mini",
+		"gpt-5":                  "gpt-5",
+		"gpt-5-codex":            "gpt-5",
+		"gpt-5.1-codex":          "gpt-5",
+		"gpt-5-mini":             "gpt-5-mini",
+		"gpt-5-nano":             "gpt-5-mini",
 		"gpt-4.1":                "gpt-4o",
 		"gpt-4.1-mini":           "gpt-4o-mini",
 		"gpt-4.1-nano":           "gpt-4o-mini",
@@ -75,6 +80,10 @@ func TestEstimateCostUsd(t *testing.T) {
 	// o3-mini uses the o-series-mini tier (1.1 in), not full o1 (15)
 	if c := EstimateCostUsd("o3-mini", 1_000_000, 0, 0, 0); !almostEqual(c, 1.1) {
 		t.Errorf("o3-mini 1M input = %v, want 1.1 (o-series-mini)", c)
+	}
+	// gpt-5-codex (Codex's default family) uses the gpt-5 tier (1.25 in), not the sonnet fallback (3)
+	if c := EstimateCostUsd("gpt-5-codex", 1_000_000, 0, 0, 0); !almostEqual(c, 1.25) {
+		t.Errorf("gpt-5-codex 1M input = %v, want 1.25 (gpt-5 tier)", c)
 	}
 	// zero tokens => zero cost
 	if c := EstimateCostUsd("claude-opus-4-8", 0, 0, 0, 0); !almostEqual(c, 0) {

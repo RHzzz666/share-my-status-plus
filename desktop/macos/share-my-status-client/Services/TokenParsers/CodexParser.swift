@@ -53,16 +53,18 @@ nonisolated struct CodexParser: TokenLogParser {
             }
 
             for file in files {
-                if let key = TokenScanCache.fileKey(for: file),
-                   Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
+                // Stat the file ONCE; the same key feeds the mtime pre-filter,
+                // the cache lookup, and the store below.
+                guard let key = TokenScanCache.fileKey(for: file) else { continue }
+                if Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
                     continue
                 }
-                if let cached = cache.cachedEntries(for: file) {
+                if let cached = cache.cachedEntries(for: file, key: key) {
                     out.append(contentsOf: cached)
                     continue
                 }
                 let entries = Self.parseFile(file)
-                cache.store(entries, for: file)
+                cache.store(entries, for: file, key: key)
                 out.append(contentsOf: entries)
             }
         }

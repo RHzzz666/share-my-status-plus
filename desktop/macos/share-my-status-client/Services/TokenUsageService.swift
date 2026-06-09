@@ -56,7 +56,9 @@ actor TokenUsageService {
                              intervalSeconds: TimeInterval) {
         let intervalChanged = self.intervalSeconds != intervalSeconds
         self.toggles = toggles
-        self.windowDays = max(1, windowDays)
+        // Floor at 7: the last7d window assumes the total window is >= 7d (the UI
+        // fixes it at 30 anyway); this guards old imported configs with e.g. 3.
+        self.windowDays = max(7, windowDays)
         self.intervalSeconds = max(30, intervalSeconds)
         if isRunning && intervalChanged {
             // Restart the loop so the new interval takes effect promptly.
@@ -97,7 +99,7 @@ actor TokenUsageService {
         // kaboo aligns 7D/30D as rolling N×24h windows (not calendar-aligned), so
         // the scan floor is now − windowDays×24h.
         let cal = Calendar.current
-        let since = now.addingTimeInterval(-Double(max(1, windowDays)) * 86400)
+        let since = now.addingTimeInterval(-Double(windowDays) * 86400)
 
         let parsers = activeParsers()
         var entries: [TokenEntry] = []
@@ -182,13 +184,25 @@ actor TokenUsageService {
     }
 
     private func persistCache() {
+        // Nothing changed this cycle: skip the filter/encode/rewrite entirely so
+        // an unchanged multi-MB cache isn't rewritten on every tick.
+        guard cache.dirty else { return }
+
         // Parsers have already written fresh per-file results into `cache` this
-        // cycle. Drop entries whose backing file no longer exists so the cache
-        // doesn't grow unbounded, then persist.
+        // cycle. Drop entries whose backing file no longer exists, and entries
+        // whose file mtime fell out of the scan window (+1 day slack, mirroring
+        // the parsers' window pre-filter so nothing reachable is lost), so the
+        // cache doesn't grow unbounded, then persist.
         let fm = FileManager.default
-        cache.files = cache.files.filter { fm.fileExists(atPath: $0.value.key.path) }
+        let nowMs = nowProvider().timeIntervalSince1970 * 1000
+        let cutoffMs = Int64(nowMs - Double(windowDays + 1) * 86_400 * 1000)
+        cache.files = cache.files.filter {
+            $0.value.key.mtimeMs >= cutoffMs && fm.fileExists(atPath: $0.value.key.path)
+        }
         guard let url = cacheFileURL(),
               let data = try? JSONEncoder().encode(cache) else { return }
-        try? data.write(to: url, options: .atomic)
+        if (try? data.write(to: url, options: .atomic)) != nil {
+            cache.dirty = false
+        }
     }
 }

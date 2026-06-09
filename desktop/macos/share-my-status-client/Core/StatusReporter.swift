@@ -98,15 +98,22 @@ class StatusReporter: ObservableObject {
     
     // Track if configuration update is in progress
     private var isUpdatingConfiguration = false
-    
+
+    // Set when an update arrives while another is in flight; the in-flight task
+    // replays one more update on completion so the latest config state (e.g. a
+    // token-toggle-off and its zeroed clear report) is never silently dropped.
+    private var pendingConfigUpdate = false
+
     // Cache for deduplication
     private var lastReportedActivityLabel: String?
 
     // Configuration Update
     func updateConfiguration(_ config: AppConfiguration, autoStart: Bool = false) {
-        // Prevent concurrent configuration updates
+        // Prevent concurrent configuration updates; remember that one arrived so
+        // the in-flight task can replay it once it finishes.
         guard !isUpdatingConfiguration else {
-            logger.warning("Configuration update already in progress, skipping")
+            logger.warning("Configuration update already in progress, deferring re-run")
+            pendingConfigUpdate = true
             return
         }
         
@@ -122,9 +129,15 @@ class StatusReporter: ObservableObject {
         previousConfigSnapshot = ConfigSnapshot(from: config)
         
         Task {
-            defer { 
+            defer {
                 Task { @MainActor in
                     self.isUpdatingConfiguration = false
+                    if self.pendingConfigUpdate {
+                        self.pendingConfigUpdate = false
+                        // Replay once with the shared configuration object, which
+                        // holds the latest values at this point.
+                        self.updateConfiguration(config, autoStart: false)
+                    }
                 }
             }
             

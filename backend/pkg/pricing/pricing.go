@@ -26,6 +26,8 @@ var familyPrices = map[string]Price{
 	"claude-opus":   {Input: 15, Output: 75, CachedInput: 1.5, Reasoning: 75},
 	"claude-sonnet": {Input: 3, Output: 15, CachedInput: 0.30, Reasoning: 15},
 	"claude-haiku":  {Input: 0.80, Output: 4, CachedInput: 0.08, Reasoning: 4},
+	"gpt-5":         {Input: 1.25, Output: 10, CachedInput: 0.125, Reasoning: 10},
+	"gpt-5-mini":    {Input: 0.25, Output: 2, CachedInput: 0.025, Reasoning: 2},
 	"gpt-4o":        {Input: 2.5, Output: 10, CachedInput: 1.25, Reasoning: 10},
 	"gpt-4o-mini":   {Input: 0.15, Output: 0.60, CachedInput: 0.075, Reasoning: 0.60},
 	"o-series":      {Input: 15, Output: 60, CachedInput: 7.5, Reasoning: 60},
@@ -54,6 +56,12 @@ func DetectFamily(model string) string {
 			return "gemini-flash"
 		}
 		return "gemini-pro"
+	case strings.Contains(m, "gpt-5"), strings.Contains(m, "gpt5"):
+		// GPT-5 系列(Codex 默认模型族,如 gpt-5、gpt-5-codex、gpt-5.x);mini/nano 走低档。
+		if strings.Contains(m, "mini") || strings.Contains(m, "nano") {
+			return "gpt-5-mini"
+		}
+		return "gpt-5"
 	case strings.Contains(m, "4o-mini"), strings.Contains(m, "4o mini"),
 		strings.Contains(m, "gpt-4") && strings.Contains(m, "mini"),
 		strings.Contains(m, "gpt-4") && strings.Contains(m, "nano"):

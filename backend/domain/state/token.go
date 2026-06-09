@@ -107,14 +107,16 @@ func pickAggregate(explicit *int64, byModelSum int64) int64 {
 }
 
 // topModelOfWindow 返回窗口内总 token 数最高的模型名（无则空串）。
+// 跳过零用量条目（如 claude-code 的 "<synthetic>" 错误占位记录）与合成的 "other"
+// 折叠项，与客户端 maxModel 的过滤口径一致。
 func topModelOfWindow(w *common.TokenWindowUsage) string {
 	if w == nil || len(w.ByModel) == 0 {
 		return ""
 	}
 	best := ""
-	var bestTotal int64 = -1
+	var bestTotal int64
 	for _, m := range w.ByModel {
-		if m == nil {
+		if m == nil || m.Model == "other" {
 			continue
 		}
 		t := derefI64(m.InputTokens) + derefI64(m.OutputTokens) +

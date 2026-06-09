@@ -63,8 +63,16 @@ nonisolated struct ClaudeAppParser: TokenLogParser {
         var out: [TokenEntry] = []
 
         // Sessions already covered by the Claude Code parser; their IDB rows are
-        // dropped to avoid double-counting (mirrors claudeCodeKnownSessions()).
-        let covered = Self.claudeCodeKnownSessions()
+        // dropped at emit time to avoid double-counting. Resolved LAZILY on first
+        // use so machines without the Claude desktop app blob dir (or scans that
+        // surface zero rows) never walk ~/.claude/projects at all.
+        var covered: Set<String>? = nil
+        func coveredSet() -> Set<String> {
+            if let covered { return covered }
+            let resolved = Self.claudeCodeKnownSessions()
+            covered = resolved
+            return resolved
+        }
 
         // Cross-file requestId dedup within a single scan (Chromium snapshot
         // rotation can repeat the same requestId across blob shards). The
@@ -81,26 +89,33 @@ nonisolated struct ClaudeAppParser: TokenLogParser {
 
             let blobFiles = TokenParseHelpers.findFiles(under: blobRoot) { _ in true }
             for file in blobFiles {
+                // Stat the file ONCE; the same key feeds the mtime pre-filter,
+                // the cache lookup, and the store below.
+                guard let key = TokenScanCache.fileKey(for: file) else { continue }
+
                 // Bound work by mtime like ClaudeCodeParser: a blob last modified
                 // well before `since` cannot hold an in-window record (1-day slack
                 // since one shard may hold many records).
-                if let key = TokenScanCache.fileKey(for: file),
-                   Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
+                if Double(key.mtimeMs) / 1000 < since.timeIntervalSince1970 - 86_400 {
                     continue
                 }
 
+                // The cache stores the RAW parsed rows (they carry sessionId);
+                // the covered-session drop is applied at emit time below so a
+                // later change to ~/.claude/projects isn't baked into the cache.
                 let entries: [TokenEntry]
-                if let cached = cache.cachedEntries(for: file) {
+                if let cached = cache.cachedEntries(for: file, key: key) {
                     entries = cached
                 } else {
-                    let parsed = Self.parseBlobFile(file, covered: covered)
-                    cache.store(parsed, for: file)
+                    let parsed = Self.parseBlobFile(file)
+                    cache.store(parsed, for: file, key: key)
                     entries = parsed
                 }
 
-                // Apply requestId dedup at the scan level (the cache stores the
-                // raw per-file rows; cross-shard dedup is applied here).
+                // Emit: drop sessions already covered by the Claude Code parser,
+                // then apply requestId dedup at the scan level (cross-shard).
                 for e in entries {
+                    if !e.sessionId.isEmpty, coveredSet().contains(e.sessionId) { continue }
                     let req = e.messageId
                     if !req.isEmpty {
                         if seenReq.contains(req) { continue }
@@ -115,26 +130,40 @@ nonisolated struct ClaudeAppParser: TokenLogParser {
 
     // MARK: - claude-code session coverage
 
+    /// Mirror ClaudeCodeParser's config-dir resolution (CLAUDE_CONFIG_DIR path
+    /// list first, fallback ~/.claude) without modifying that parser.
+    private static func claudeCodeConfigDirs() -> [URL] {
+        let env = ProcessInfo.processInfo.environment
+        if let v = env["CLAUDE_CONFIG_DIR"], !v.isEmpty {
+            return v.split(separator: ":").map { URL(fileURLWithPath: String($0), isDirectory: true) }
+        }
+        return [TokenParseHelpers.homeDirectory.appendingPathComponent(".claude", isDirectory: true)]
+    }
+
     /// Set of session UUIDs already captured by the Claude Code parser
-    /// (~/.claude/projects/*.jsonl). Mirrors kaboo's claudeCodeKnownSessions.
+    /// (<config dir>/projects/**/*.jsonl, honoring CLAUDE_CONFIG_DIR exactly
+    /// like ClaudeCodeParser). Mirrors kaboo's claudeCodeKnownSessions.
     static func claudeCodeKnownSessions() -> Set<String> {
         var out = Set<String>()
-        let root = TokenParseHelpers.homeDirectory
-            .appendingPathComponent(".claude/projects", isDirectory: true)
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDir),
-              isDir.boolValue else {
-            return out
-        }
-        for file in TokenParseHelpers.findFiles(under: root, matching: { $0.hasSuffix(".jsonl") }) {
-            out.insert(file.deletingPathExtension().lastPathComponent)
+        let fm = FileManager.default
+        for dir in claudeCodeConfigDirs() {
+            let root = dir.appendingPathComponent("projects", isDirectory: true)
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: root.path, isDirectory: &isDir), isDir.boolValue else {
+                continue
+            }
+            for file in TokenParseHelpers.findFiles(under: root, matching: { $0.hasSuffix(".jsonl") }) {
+                out.insert(file.deletingPathExtension().lastPathComponent)
+            }
         }
         return out
     }
 
     // MARK: - Blob file parsing
 
-    static func parseBlobFile(_ url: URL, covered: Set<String>) -> [TokenEntry] {
+    /// Returns the RAW rows (no covered-session filtering — that's applied at
+    /// emit time in parse(), so cached results stay filter-independent).
+    static func parseBlobFile(_ url: URL) -> [TokenEntry] {
         guard let raw = try? Data(contentsOf: url), raw.count >= 8 else { return [] }
         // Chromium IDB envelope: format-tag, version, compression-type, then snappy.
         let bytes = [UInt8](raw)
@@ -143,8 +172,6 @@ nonisolated struct ClaudeAppParser: TokenLogParser {
         var entries: [TokenEntry] = []
         for r in scanClaudeAppUsage(decoded) {
             if r.requestID.isEmpty { continue }
-            // Drop sessions already covered by the Claude Code parser.
-            if !r.sessionID.isEmpty, covered.contains(r.sessionID) { continue }
 
             var project = "claude-app"
             if !r.cwd.isEmpty {

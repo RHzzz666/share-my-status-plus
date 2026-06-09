@@ -317,6 +317,7 @@ func derefInt64(p *int64) int64 {
 }
 
 // formatTokensHuman 把 token 数格式化为紧凑可读形式：1234567 -> "1.2M"，末尾 ".0" 去除。
+// 单位阈值取 999_950（%.1f 四舍五入到 1000.0 的临界点），避免出现 "1000K"/"1000M"。
 func formatTokensHuman(n int64) string {
 	neg := ""
 	if n < 0 {
@@ -324,9 +325,9 @@ func formatTokensHuman(n int64) string {
 		n = -n
 	}
 	switch {
-	case n >= 1_000_000_000:
+	case n >= 999_950_000:
 		return neg + trimDotZero(fmt.Sprintf("%.1f", float64(n)/1e9)) + "B"
-	case n >= 1_000_000:
+	case n >= 999_950:
 		return neg + trimDotZero(fmt.Sprintf("%.1f", float64(n)/1e6)) + "M"
 	case n >= 1_000:
 		return neg + trimDotZero(fmt.Sprintf("%.1f", float64(n)/1e3)) + "K"

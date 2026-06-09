@@ -133,8 +133,8 @@ nonisolated enum TokenAggregator {
     ///
     /// - Dedups by `messageId` (when present) so re-reads don't double count.
     /// - `today`  = entries on the local calendar day of `now`.
-    /// - `last7d` = entries >= startOfDay(now - 6 days).
-    /// - `total`  = entries >= startOfDay(now - (windowDays-1) days).
+    /// - `last7d` = entries with timestamp >= now − 7×24h (rolling).
+    /// - `total`  = entries with timestamp >= now − windowDays×24h (rolling).
     /// - `topModel` = model with max total in today; if today empty, use total; else "".
     /// - `sessionCount` = distinct sessionIds with >= 1 entry today.
     static func aggregate(entries: [TokenEntry],
@@ -233,7 +233,9 @@ nonisolated enum TokenAggregator {
             byModel[e.model] = m
         }
 
-        w.byModel = topNByModel(Array(byModel.values))
+        // Drop zero-total placeholder models (e.g. claude-code writes "<synthetic>"
+        // rows with zeroed usage) so they never reach the wire payload or UI.
+        w.byModel = topNByModel(byModel.values.filter { $0.totalTokens > 0 })
         return w
     }
 
@@ -330,12 +332,15 @@ nonisolated enum TokenFormatting {
     /// Format a token count compactly, e.g. 1234 -> "1.2K", 1_200_000 -> "1.2M".
     static func compact(_ value: Int64) -> String {
         let v = Double(value)
+        // Unit-promotion thresholds match the Go side: values that would round
+        // to "1000.0" of the smaller unit promote instead (999_999 -> "1M",
+        // not "1000K").
         switch value {
         case ..<1_000:
             return "\(value)"
-        case ..<1_000_000:
+        case ..<999_950:
             return trim(v / 1_000) + "K"
-        case ..<1_000_000_000:
+        case ..<999_950_000:
             return trim(v / 1_000_000) + "M"
         default:
             return trim(v / 1_000_000_000) + "B"

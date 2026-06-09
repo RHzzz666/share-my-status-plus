@@ -46,31 +46,49 @@ nonisolated struct CursorParser: TokenLogParser {
         let dbURL = resolvedDBPath()
         guard FileManager.default.fileExists(atPath: dbURL.path) else { return [] }
 
-        if let cached = cache.cachedEntries(for: dbURL) {
-            return cached
-        }
-
         var entries: [TokenEntry] = []
 
         // 1) A locally-cached Cursor usage CSV export, if present next to the DB.
-        if let csv = readSidecarCSV(near: dbURL) {
-            entries.append(contentsOf: Self.parseCSV(csv))
+        //    Cached under the CSV file's OWN identity, not the DB's.
+        let csvURL = sidecarCSVURL(near: dbURL)
+        if let csvKey = TokenScanCache.fileKey(for: csvURL) {
+            if let cached = cache.cachedEntries(for: csvURL, key: csvKey) {
+                entries.append(contentsOf: cached)
+            } else if let csv = try? String(contentsOf: csvURL, encoding: .utf8) {
+                let parsed = Self.parseCSV(csv)
+                cache.store(parsed, for: csvURL, key: csvKey)
+                entries.append(contentsOf: parsed)
+            }
         }
 
         // 2) Any JSON usage records stored in the DB's key/value tables.
-        entries.append(contentsOf: readUsageFromSQLite(dbURL))
+        //    The live state.vscdb changes size/mtime on virtually every tick, so
+        //    its exact identity never repeats and the cache would never hit.
+        //    Rate-limit by caching under a SYNTHETIC key: mtime bucketed to 30
+        //    minutes and size zeroed, so within a bucket the cache hits and the
+        //    multi-GB DB is table-scanned at most twice an hour.
+        if let realKey = TokenScanCache.fileKey(for: dbURL) {
+            let bucketedKey = TokenScanFileKey(
+                path: realKey.path,
+                size: 0,
+                mtimeMs: (realKey.mtimeMs / 1_800_000) * 1_800_000
+            )
+            if let cached = cache.cachedEntries(for: dbURL, key: bucketedKey) {
+                entries.append(contentsOf: cached)
+            } else {
+                let parsed = readUsageFromSQLite(dbURL)
+                cache.store(parsed, for: dbURL, key: bucketedKey)
+                entries.append(contentsOf: parsed)
+            }
+        }
 
-        cache.store(entries, for: dbURL)
         return entries
     }
 
     // MARK: - Sidecar CSV
 
-    private func readSidecarCSV(near dbURL: URL) -> String? {
-        let dir = dbURL.deletingLastPathComponent()
-        let candidate = dir.appendingPathComponent("cursor-usage.csv")
-        guard FileManager.default.fileExists(atPath: candidate.path) else { return nil }
-        return try? String(contentsOf: candidate, encoding: .utf8)
+    private func sidecarCSVURL(near dbURL: URL) -> URL {
+        dbURL.deletingLastPathComponent().appendingPathComponent("cursor-usage.csv")
     }
 
     // MARK: - SQLite (best-effort, fully gated)
@@ -101,14 +119,33 @@ nonisolated struct CursorParser: TokenLogParser {
         // Guard: skip if table doesn't exist.
         guard tableExists(db, name: table) else { return [] }
 
-        let sql = "SELECT key, value FROM \(table) WHERE lower(key) LIKE '%usage%' OR lower(key) LIKE '%token%'"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
+        // Pass 1: select KEYS only. Matching on key alone means non-matching
+        // rows' multi-MB value blobs (overflow pages) are never read off disk.
+        let keySQL = "SELECT key FROM \(table) WHERE lower(key) LIKE '%usage%' OR lower(key) LIKE '%token%'"
+        var keyStmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, keySQL, -1, &keyStmt, nil) == SQLITE_OK else { return [] }
+        var keys: [String] = []
+        while sqlite3_step(keyStmt) == SQLITE_ROW {
+            if let keyPtr = sqlite3_column_text(keyStmt, 0) {
+                keys.append(String(cString: keyPtr))
+            }
+        }
+        sqlite3_finalize(keyStmt)
+        if keys.isEmpty { return [] }
+
+        // Pass 2: fetch values one-by-one for the matched keys only.
+        let valSQL = "SELECT value FROM \(table) WHERE key = ?"
+        var valStmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, valSQL, -1, &valStmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(valStmt) }
 
         var out: [TokenEntry] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            guard let valuePtr = sqlite3_column_text(stmt, 1) else { continue }
+        for key in keys {
+            sqlite3_reset(valStmt)
+            sqlite3_clear_bindings(valStmt)
+            sqlite3_bind_text(valStmt, 1, (key as NSString).utf8String, -1, nil)
+            guard sqlite3_step(valStmt) == SQLITE_ROW,
+                  let valuePtr = sqlite3_column_text(valStmt, 0) else { continue }
             let value = String(cString: valuePtr)
             guard let data = value.data(using: .utf8) else { continue }
             out.append(contentsOf: Self.entriesFromJSONValue(data))
@@ -257,6 +294,7 @@ nonisolated struct CursorParser: TokenLogParser {
         if trimmed.isEmpty { return nil }
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
         f.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return f.date(from: trimmed)
     }

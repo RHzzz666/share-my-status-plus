@@ -162,21 +162,24 @@ func testWindowBucketing() {
     // now = 2026-06-05 12:00 UTC. Aligned with kaboo: today = UTC calendar day;
     // 7d/30d are ROLLING windows anchored at now (7d >= 05-29T12:00, 30d >= 05-06T12:00).
     let now = date("2026-06-05T12:00:00.000Z")
+    // Non-today entries carry DISTINCT sessionIds so the sessionCount assertion
+    // actually discriminates today-only counting (they must NOT be counted).
     let entries = [
-        entry(model: "m", ts: "2026-06-05T01:00:00.000Z", input: 10, message: "today_a"),     // today + 7d + 30d
-        entry(model: "m", ts: "2026-06-05T11:00:00.000Z", input: 10, message: "today_b"),     // today + 7d + 30d
-        entry(model: "m", ts: "2026-06-02T12:00:00.000Z", input: 100, message: "d3"),         // 7d + 30d (not today)
-        entry(model: "m", ts: "2026-05-29T13:00:00.000Z", input: 1000, message: "edge7d_in"), // just inside 7d
-        entry(model: "m", ts: "2026-05-29T11:00:00.000Z", input: 2000, message: "edge7d_out"),// just outside 7d, inside 30d
-        entry(model: "m", ts: "2026-05-06T13:00:00.000Z", input: 50000, message: "edge30_in"),// just inside 30d
-        entry(model: "m", ts: "2026-05-06T11:00:00.000Z", input: 99999, message: "edge30_out")// just outside 30d -> dropped
+        entry(model: "m", ts: "2026-06-05T01:00:00.000Z", input: 10, message: "today_a"),                   // today + 7d + 30d (session s1)
+        entry(model: "m", ts: "2026-06-05T11:00:00.000Z", input: 10, message: "today_b"),                   // today + 7d + 30d (session s1)
+        entry(model: "m", ts: "2026-06-05T09:00:00.000Z", input: 5, session: "s9", message: "today_c"),     // today, second distinct session
+        entry(model: "m", ts: "2026-06-02T12:00:00.000Z", input: 100, session: "s2", message: "d3"),        // 7d + 30d (not today)
+        entry(model: "m", ts: "2026-05-29T13:00:00.000Z", input: 1000, session: "s3", message: "edge7d_in"),// just inside 7d
+        entry(model: "m", ts: "2026-05-29T11:00:00.000Z", input: 2000, session: "s4", message: "edge7d_out"),// just outside 7d, inside 30d
+        entry(model: "m", ts: "2026-05-06T13:00:00.000Z", input: 50000, session: "s5", message: "edge30_in"),// just inside 30d
+        entry(model: "m", ts: "2026-05-06T11:00:00.000Z", input: 99999, session: "s6", message: "edge30_out")// just outside 30d -> dropped
     ]
     let agg = TokenAggregator.aggregate(entries: entries, windowDays: 30, now: now, calendar: utcCalendar)
 
-    T.eq(agg.today.inputTokens, 20, "window: today (UTC cal day) = 10+10")
-    T.eq(agg.last7d.inputTokens, 1120, "window: rolling 7d = 10+10+100+1000 (edge7d_in in, edge7d_out out)")
-    T.eq(agg.total.inputTokens, 53120, "window: rolling 30d = 1120 + 2000 + 50000 (edge30_out dropped)")
-    T.eq(agg.sessionCount, 1, "window: sessionCount distinct today sessions")
+    T.eq(agg.today.inputTokens, 25, "window: today (UTC cal day) = 10+10+5")
+    T.eq(agg.last7d.inputTokens, 1125, "window: rolling 7d = 10+10+5+100+1000 (edge7d_in in, edge7d_out out)")
+    T.eq(agg.total.inputTokens, 53125, "window: rolling 30d = 1125 + 2000 + 50000 (edge30_out dropped)")
+    T.eq(agg.sessionCount, 2, "window: sessionCount = distinct TODAY sessions only (s1 + s9; s2..s6 excluded)")
     T.eq(agg.windowDays, 30, "window: windowDays echoed")
     T.eq(agg.ts, Int64(now.timeIntervalSince1970 * 1000), "window: ts is now in ms")
 }
@@ -201,6 +204,16 @@ func testByModelTopNFolding() {
     T.eq(models.last?.totalTokens, 300, "byModel: other = 200 + 100")
     // Top model overall is model-00 (1000).
     T.eq(models.first?.model, "model-00", "byModel: sorted desc, top is model-00")
+
+    // Zero-total placeholder models (e.g. claude-code "<synthetic>" rows with
+    // zeroed usage) must be excluded from byModel.
+    let aggZ = TokenAggregator.aggregate(entries: [
+        entry(model: "real-model", ts: "2026-06-05T10:00:00.000Z", input: 10, message: "z1"),
+        entry(model: "<synthetic>", ts: "2026-06-05T10:00:00.000Z", message: "z2")
+    ], windowDays: 30, now: now, calendar: utcCalendar)
+    T.eq(aggZ.today.byModel.count, 1, "byModel: zero-total model excluded")
+    T.ok(!aggZ.today.byModel.contains { $0.model == "<synthetic>" }, "byModel: '<synthetic>' not in byModel")
+    T.eq(aggZ.today.byModel.first?.model, "real-model", "byModel: nonzero model kept")
 }
 
 // MARK: - Test: topModel selection (today, fallback to total, else "")
@@ -323,6 +336,11 @@ func testFormatting() {
     T.eq(TokenFormatting.compact(1234), "1.2K", "fmt: 1234 -> 1.2K")
     T.eq(TokenFormatting.compact(1_200_000), "1.2M", "fmt: 1.2M")
     T.eq(TokenFormatting.compact(2_000_000_000), "2B", "fmt: 2B")
+    // Unit-promotion boundaries (match Go): values that would round to "1000.0"
+    // of the smaller unit promote to the next unit instead.
+    T.eq(TokenFormatting.compact(999_949), "999.9K", "fmt: 999_949 -> 999.9K")
+    T.eq(TokenFormatting.compact(999_999), "1M", "fmt: 999_999 -> 1M (not 1000K)")
+    T.eq(TokenFormatting.compact(999_950_000), "1B", "fmt: 999_950_000 -> 1B (not 1000M)")
 }
 
 // MARK: - Run

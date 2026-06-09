@@ -1,7 +1,7 @@
 // Dev tool: scan THIS machine's real local AI-tool logs using the SAME parser
 // sources the app ships, print a human summary (stderr) + the exact
 // BatchReportRequest wire JSON the client would POST (stdout).
-// Mirrors the app's default-ON parser set (cursor + antigravity default OFF).
+// Mirrors the app's default-ON parser set (cursor default OFF).
 // Build/run via run.sh — not part of the app target.
 import Foundation
 
