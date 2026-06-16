@@ -40,6 +40,12 @@ actor TokenUsageService {
     private var cache = TokenScanCache()
     private var changeCallback: ((TokenUsageAggregate) -> Void)?
 
+    // Aggregate memoization: reuse `latest` (skip the dedup/window recompute) when
+    // the parsed entry set AND the local calendar day are both unchanged. Cleared
+    // on config change so a new toggle set / windowDays always recomputes.
+    private var lastEntryCount: Int = -1
+    private var lastScanDayStart: Date?
+
     // Injectable "now" + parser overrides so this is testable; defaults to live.
     private let nowProvider: () -> Date
     private let parserOverride: [TokenLogParser]?
@@ -61,6 +67,9 @@ actor TokenUsageService {
         // fixes it at 30 anyway); this guards old imported configs with e.g. 3.
         self.windowDays = max(7, windowDays)
         self.intervalSeconds = max(30, intervalSeconds)
+        // Toggles / windowDays affect the aggregate even with identical files;
+        // invalidate the memo so the next scan recomputes.
+        lastEntryCount = -1
         if isRunning && intervalChanged {
             // Restart the loop so the new interval takes effect promptly.
             restartLoop()
@@ -112,6 +121,20 @@ actor TokenUsageService {
             entries.append(contentsOf: parsed)
         }
 
+        // Fast path: if no file was re-parsed this cycle (`!cache.dirty` ⇒ no new
+        // or modified file), the entry COUNT is unchanged (catches removals, which
+        // don't dirty the cache), and we're still on the same local calendar day
+        // (natural-day windows only shift at midnight), then the dedup/window
+        // result is byte-identical to last time — reuse it and skip the recompute.
+        let dayStart = cal.startOfDay(for: now)
+        if let cached = latest,
+           !cache.dirty,
+           entries.count == lastEntryCount,
+           lastScanDayStart == dayStart {
+            persistCache() // dirty is false here ⇒ early-returns without rewriting
+            return cached
+        }
+
         let aggregate = TokenAggregator.aggregate(
             entries: entries,
             windowDays: windowDays,
@@ -119,6 +142,8 @@ actor TokenUsageService {
             calendar: cal
         )
         latest = aggregate
+        lastEntryCount = entries.count
+        lastScanDayStart = dayStart
         persistCache()
         logger.info("Token scan complete: today=\(aggregate.today.totalTokens), sessions=\(aggregate.sessionCount), models=\(aggregate.today.byModel.count)")
         return aggregate

@@ -105,13 +105,22 @@ nonisolated enum TokenParseHelpers {
             return false
         }
         for rawLine in content.split(separator: "\n", omittingEmptySubsequences: true) {
-            let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { continue }
-            guard let data = trimmed.data(using: .utf8),
-                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                continue
+            // Drain per line: JSONSerialization returns autoreleased Foundation
+            // objects (NSDictionary/NSArray). Without a pool they accumulate for
+            // the whole scan — at ~tens of thousands of lines across multi-GB of
+            // logs that was a ~2.6 GB cold-scan peak. A per-line pool bounds it to
+            // one line's working set regardless of file size. The values `body`
+            // keeps (bridged Swift Strings/Int64 in TokenEntry) are retained
+            // independently and stay valid after the pool drains.
+            autoreleasepool {
+                let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty { return }
+                guard let data = trimmed.data(using: .utf8),
+                      let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                    return
+                }
+                body(obj)
             }
-            body(obj)
         }
         return true
     }
