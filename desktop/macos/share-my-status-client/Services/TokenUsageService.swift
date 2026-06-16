@@ -19,6 +19,7 @@ nonisolated struct TokenParserToggles: Equatable {
     var claudeApp: Bool
     var openClaw: Bool
     var trae: Bool
+    var traex: Bool
 }
 
 /// Actor-based token usage collector. Foundation-only domain logic; the reporter
@@ -28,7 +29,7 @@ actor TokenUsageService {
 
     // Configuration
     private var toggles = TokenParserToggles(claudeCode: true, codex: true, cursor: false, gemini: true,
-                                             claudeApp: true, openClaw: true, trae: true)
+                                             claudeApp: true, openClaw: true, trae: true, traex: true)
     private var windowDays: Int = 30
     private var intervalSeconds: TimeInterval = 300
 
@@ -158,6 +159,7 @@ actor TokenUsageService {
         if toggles.claudeApp { parsers.append(ClaudeAppParser()) }
         if toggles.openClaw { parsers.append(OpenClawParser()) }
         if toggles.trae { parsers.append(TraeParser()) }
+        if toggles.traex { parsers.append(TraeXParser()) }
         return parsers
     }
 

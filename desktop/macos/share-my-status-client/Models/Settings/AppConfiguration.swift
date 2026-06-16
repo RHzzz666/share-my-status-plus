@@ -32,6 +32,7 @@ struct ExportableConfiguration: Codable {
     var tokenClaudeAppEnabled: Bool
     var tokenOpenClawEnabled: Bool
     var tokenTraeEnabled: Bool
+    var tokenTraeXEnabled: Bool
     var tokenReportIntervalSeconds: TimeInterval
     var tokenWindowDays: Int
 
@@ -40,7 +41,7 @@ struct ExportableConfiguration: Codable {
 
     enum CodingKeys: String, CodingKey {
         case secretKey, endpointURL, musicReportingEnabled, systemReportingEnabled, activityReportingEnabled, musicAppWhitelist, activityGroups, systemPollingInterval, activityPollingInterval
-        case tokenReportingEnabled, tokenClaudeCodeEnabled, tokenCodexEnabled, tokenCursorEnabled, tokenGeminiEnabled, tokenClaudeAppEnabled, tokenOpenClawEnabled, tokenTraeEnabled, tokenReportIntervalSeconds, tokenWindowDays
+        case tokenReportingEnabled, tokenClaudeCodeEnabled, tokenCodexEnabled, tokenCursorEnabled, tokenGeminiEnabled, tokenClaudeAppEnabled, tokenOpenClawEnabled, tokenTraeEnabled, tokenTraeXEnabled, tokenReportIntervalSeconds, tokenWindowDays
         case exportDate, version
     }
 
@@ -61,6 +62,7 @@ struct ExportableConfiguration: Codable {
          tokenClaudeAppEnabled: Bool = DefaultSettings.tokenClaudeAppEnabled,
          tokenOpenClawEnabled: Bool = DefaultSettings.tokenOpenClawEnabled,
          tokenTraeEnabled: Bool = DefaultSettings.tokenTraeEnabled,
+         tokenTraeXEnabled: Bool = DefaultSettings.tokenTraeXEnabled,
          tokenReportIntervalSeconds: TimeInterval = DefaultSettings.tokenReportIntervalSeconds,
          tokenWindowDays: Int = DefaultSettings.tokenWindowDays,
          exportDate: String = ISO8601DateFormatter().string(from: Date()),
@@ -82,6 +84,7 @@ struct ExportableConfiguration: Codable {
         self.tokenClaudeAppEnabled = tokenClaudeAppEnabled
         self.tokenOpenClawEnabled = tokenOpenClawEnabled
         self.tokenTraeEnabled = tokenTraeEnabled
+        self.tokenTraeXEnabled = tokenTraeXEnabled
         self.tokenReportIntervalSeconds = tokenReportIntervalSeconds
         self.tokenWindowDays = tokenWindowDays
         self.exportDate = exportDate
@@ -107,6 +110,7 @@ struct ExportableConfiguration: Codable {
         self.tokenClaudeAppEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenClaudeAppEnabled) ?? DefaultSettings.tokenClaudeAppEnabled
         self.tokenOpenClawEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenOpenClawEnabled) ?? DefaultSettings.tokenOpenClawEnabled
         self.tokenTraeEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenTraeEnabled) ?? DefaultSettings.tokenTraeEnabled
+        self.tokenTraeXEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenTraeXEnabled) ?? DefaultSettings.tokenTraeXEnabled
         self.tokenReportIntervalSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .tokenReportIntervalSeconds) ?? DefaultSettings.tokenReportIntervalSeconds
         self.tokenWindowDays = try container.decodeIfPresent(Int.self, forKey: .tokenWindowDays) ?? DefaultSettings.tokenWindowDays
         self.exportDate = try container.decodeIfPresent(String.self, forKey: .exportDate) ?? ISO8601DateFormatter().string(from: Date())
@@ -199,6 +203,12 @@ class AppConfiguration: ObservableObject {
         }
     }
 
+    @Published var tokenTraeXEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(tokenTraeXEnabled, forKey: "tokenTraeXEnabled")
+        }
+    }
+
     /// Token report interval (seconds)
     @Published var tokenReportIntervalSeconds: TimeInterval {
         didSet {
@@ -264,6 +274,7 @@ class AppConfiguration: ObservableObject {
         self.tokenClaudeAppEnabled = UserDefaults.standard.object(forKey: "tokenClaudeAppEnabled") as? Bool ?? DefaultSettings.tokenClaudeAppEnabled
         self.tokenOpenClawEnabled = UserDefaults.standard.object(forKey: "tokenOpenClawEnabled") as? Bool ?? DefaultSettings.tokenOpenClawEnabled
         self.tokenTraeEnabled = UserDefaults.standard.object(forKey: "tokenTraeEnabled") as? Bool ?? DefaultSettings.tokenTraeEnabled
+        self.tokenTraeXEnabled = UserDefaults.standard.object(forKey: "tokenTraeXEnabled") as? Bool ?? DefaultSettings.tokenTraeXEnabled
         self.tokenReportIntervalSeconds = UserDefaults.standard.object(forKey: "tokenReportIntervalSeconds") as? TimeInterval ?? DefaultSettings.tokenReportIntervalSeconds
         self.tokenWindowDays = UserDefaults.standard.object(forKey: "tokenWindowDays") as? Int ?? DefaultSettings.tokenWindowDays
 
@@ -295,7 +306,7 @@ class AppConfiguration: ObservableObject {
             "musicReportingEnabled", "systemReportingEnabled", "activityReportingEnabled",
             "tokenReportingEnabled", "tokenClaudeCodeEnabled", "tokenCodexEnabled",
             "tokenCursorEnabled", "tokenGeminiEnabled",
-            "tokenClaudeAppEnabled", "tokenOpenClawEnabled", "tokenTraeEnabled",
+            "tokenClaudeAppEnabled", "tokenOpenClawEnabled", "tokenTraeEnabled", "tokenTraeXEnabled",
             "tokenReportIntervalSeconds", "tokenWindowDays",
             "musicAppWhitelist",
             "activityGroups",
@@ -317,6 +328,7 @@ class AppConfiguration: ObservableObject {
         self.tokenClaudeAppEnabled = DefaultSettings.tokenClaudeAppEnabled
         self.tokenOpenClawEnabled = DefaultSettings.tokenOpenClawEnabled
         self.tokenTraeEnabled = DefaultSettings.tokenTraeEnabled
+        self.tokenTraeXEnabled = DefaultSettings.tokenTraeXEnabled
         self.tokenReportIntervalSeconds = DefaultSettings.tokenReportIntervalSeconds
         self.tokenWindowDays = DefaultSettings.tokenWindowDays
         self.musicAppWhitelist = DefaultSettings.musicAppWhitelist
@@ -349,6 +361,7 @@ class AppConfiguration: ObservableObject {
             tokenClaudeAppEnabled: tokenClaudeAppEnabled,
             tokenOpenClawEnabled: tokenOpenClawEnabled,
             tokenTraeEnabled: tokenTraeEnabled,
+            tokenTraeXEnabled: tokenTraeXEnabled,
             tokenReportIntervalSeconds: tokenReportIntervalSeconds,
             tokenWindowDays: tokenWindowDays
         )
@@ -414,6 +427,7 @@ class AppConfiguration: ObservableObject {
         self.tokenClaudeAppEnabled = config.tokenClaudeAppEnabled
         self.tokenOpenClawEnabled = config.tokenOpenClawEnabled
         self.tokenTraeEnabled = config.tokenTraeEnabled
+        self.tokenTraeXEnabled = config.tokenTraeXEnabled
         self.tokenReportIntervalSeconds = config.tokenReportIntervalSeconds
         self.tokenWindowDays = config.tokenWindowDays
         return nil

@@ -71,7 +71,10 @@ nonisolated struct CodexParser: TokenLogParser {
         return out
     }
 
-    static func parseFile(_ url: URL) -> [TokenEntry] {
+    /// Parse one codex-format rollout file. `source` is parameterized so the
+    /// codex-like TraeX store (~/.trae/cli) can reuse this exact logic with its
+    /// own source label — mirrors kaboo's shared parseCodexLikeDirsWithOptions.
+    static func parseFile(_ url: URL, source: String = "codex") -> [TokenEntry] {
         var entries: [TokenEntry] = []
         let sessionId = url.deletingPathExtension().lastPathComponent
         var sessionProject = "unknown"
@@ -131,7 +134,7 @@ nonisolated struct CodexParser: TokenLogParser {
             let messageId = "tok|\(model)|\(input)|\(output)|\(cachedInput)|\(cacheCreation)|\(reasoning)|\(totalInput)|\(totalOutput)"
 
             entries.append(TokenEntry(
-                source: "codex",
+                source: source,
                 model: model,
                 project: sessionProject,
                 timestamp: ts,

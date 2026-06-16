@@ -29,6 +29,7 @@ run("gemini",      GeminiParser())
 run("claude-app",  ClaudeAppParser())
 run("openclaw",    OpenClawParser())
 run("trae",        TraeParser())
+run("traex",       TraeXParser())
 
 let agg = TokenAggregator.aggregate(entries: entries, windowDays: windowDays, now: Date(), calendar: .current)
 

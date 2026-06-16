@@ -44,6 +44,7 @@ enum DefaultSettings {
     static let tokenClaudeAppEnabled = true
     static let tokenOpenClawEnabled = true
     static let tokenTraeEnabled = true
+    static let tokenTraeXEnabled = true
 
     /// Default token report interval (seconds)
     static let tokenReportIntervalSeconds: TimeInterval = 300

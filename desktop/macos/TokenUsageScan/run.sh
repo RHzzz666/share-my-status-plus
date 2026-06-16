@@ -24,6 +24,7 @@ swiftc -O \
   "$C/Services/TokenParsers/ClaudeAppParser.swift" \
   "$C/Services/TokenParsers/OpenClawParser.swift" \
   "$C/Services/TokenParsers/TraeParser.swift" \
+  "$C/Services/TokenParsers/TraeXParser.swift" \
   "$HERE/main.swift" -lsqlite3 -o "$OUT/scan" || { echo "compile failed"; exit 1; }
 
 echo "==> Scanning your real local logs…"

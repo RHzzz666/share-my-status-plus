@@ -316,6 +316,8 @@ struct SettingsTabView: View {
                                     .font(.caption)
                                 Toggle("Trae / coco (~/Library/Caches/coco)", isOn: $configuration.tokenTraeEnabled)
                                     .font(.caption)
+                                Toggle("TraeX CLI (~/.trae/cli, codex 格式)", isOn: $configuration.tokenTraeXEnabled)
+                                    .font(.caption)
                             }
                             .padding(.leading, 4)
 

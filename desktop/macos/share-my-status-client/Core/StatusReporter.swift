@@ -52,6 +52,7 @@ class StatusReporter: ObservableObject {
         let tokenClaudeAppEnabled: Bool
         let tokenOpenClawEnabled: Bool
         let tokenTraeEnabled: Bool
+        let tokenTraeXEnabled: Bool
         let tokenReportIntervalSeconds: TimeInterval
         let tokenWindowDays: Int
 
@@ -69,6 +70,7 @@ class StatusReporter: ObservableObject {
             self.tokenClaudeAppEnabled = config.tokenClaudeAppEnabled
             self.tokenOpenClawEnabled = config.tokenOpenClawEnabled
             self.tokenTraeEnabled = config.tokenTraeEnabled
+            self.tokenTraeXEnabled = config.tokenTraeXEnabled
             self.tokenReportIntervalSeconds = config.tokenReportIntervalSeconds
             self.tokenWindowDays = config.tokenWindowDays
         }
@@ -168,7 +170,8 @@ class StatusReporter: ObservableObject {
                     gemini: config.tokenGeminiEnabled,
                     claudeApp: config.tokenClaudeAppEnabled,
                     openClaw: config.tokenOpenClawEnabled,
-                    trae: config.tokenTraeEnabled
+                    trae: config.tokenTraeEnabled,
+                    traex: config.tokenTraeXEnabled
                 ),
                 windowDays: config.tokenWindowDays,
                 intervalSeconds: config.tokenReportIntervalSeconds
@@ -522,7 +525,8 @@ class StatusReporter: ObservableObject {
                 gemini: config.tokenGeminiEnabled,
                 claudeApp: config.tokenClaudeAppEnabled,
                 openClaw: config.tokenOpenClawEnabled,
-                trae: config.tokenTraeEnabled
+                trae: config.tokenTraeEnabled,
+                traex: config.tokenTraeXEnabled
             ),
             windowDays: config.tokenWindowDays,
             intervalSeconds: config.tokenReportIntervalSeconds
