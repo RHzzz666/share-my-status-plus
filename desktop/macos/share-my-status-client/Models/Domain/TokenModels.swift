@@ -144,9 +144,9 @@ nonisolated enum TokenAggregator {
     /// Build the full aggregate from raw entries.
     ///
     /// - Dedups by `messageId` (when present) so re-reads don't double count.
-    /// - `today`  = entries on the local calendar day of `now`.
-    /// - `last7d` = entries with timestamp >= now − 7×24h (rolling).
-    /// - `total`  = entries with timestamp >= now − windowDays×24h (rolling).
+    /// - `today`  = entries on the local calendar day of `now` (kaboo "1D").
+    /// - `last7d` = entries on the last 7 natural calendar days (today + prev 6).
+    /// - `total`  = entries on the last `windowDays` natural calendar days.
     /// - `topModel` = model with max total in today; if today empty, use total; else "".
     /// - `sessionCount` = distinct sessionIds with >= 1 entry today.
     static func aggregate(entries: [TokenEntry],
@@ -156,11 +156,15 @@ nonisolated enum TokenAggregator {
         let deduped = dedupe(entries)
         let safeWindowDays = max(1, windowDays)
 
-        // Windows match kaboo: `today` = calendar day (kaboo "1D"); `last7d`/`total`
-        // are ROLLING N×24h windows anchored at `now` (kaboo "7D"/"30D"), not
-        // calendar-aligned. windowDays is always >= 7 (UI range), so startTotal <= start7d.
-        let start7d = now.addingTimeInterval(-7 * 86400)
-        let startTotal = now.addingTimeInterval(-Double(safeWindowDays) * 86400)
+        // Windows match kaboo's natural-day (user-local) semantics: `last7d`/`total`
+        // are aligned to the START of the calendar day N-1 days back, so they span
+        // whole natural days ending today — NOT rolling N×24h. kaboo buckets usage
+        // by the user's local day (its leaderboard moved off rolling windows); the
+        // day boundary here uses `calendar`'s timezone (device-local) to match.
+        // windowDays is always >= 7 (UI range), so startTotal <= start7d.
+        let startOfToday = calendar.startOfDay(for: now)
+        let start7d = calendar.date(byAdding: .day, value: -6, to: startOfToday) ?? startOfToday
+        let startTotal = calendar.date(byAdding: .day, value: -(safeWindowDays - 1), to: startOfToday) ?? startOfToday
 
         var todayEntries: [TokenEntry] = []
         var last7dEntries: [TokenEntry] = []
