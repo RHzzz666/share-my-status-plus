@@ -42,6 +42,7 @@ var templateVariables = []TemplateVariable{
 	{Key: "tokenInToday", Placeholder: "{tokenInToday}", Category: "token", Label: "今日输入 Token", Type: "int_string", Example: "800000"},
 	{Key: "tokenOutToday", Placeholder: "{tokenOutToday}", Category: "token", Label: "今日输出 Token", Type: "int_string", Example: "300000"},
 	{Key: "tokenCacheToday", Placeholder: "{tokenCacheToday}", Category: "token", Label: "今日缓存读取 Token", Type: "int_string", Example: "120000"},
+	{Key: "tokenCacheCreateToday", Placeholder: "{tokenCacheCreateToday}", Category: "token", Label: "今日缓存写入 Token", Type: "int_string", Example: "45000"},
 	{Key: "tokenReasonToday", Placeholder: "{tokenReasonToday}", Category: "token", Label: "今日推理 Token", Type: "int_string", Example: "14567"},
 	{Key: "tokens7d", Placeholder: "{tokens7d}", Category: "token", Label: "近 7 天 Token 数", Type: "int_string", Example: "8901234"},
 	{Key: "tokens7dH", Placeholder: "{tokens7dH}", Category: "token", Label: "近 7 天 Token（可读）", Type: "string", Example: "8.9M"},

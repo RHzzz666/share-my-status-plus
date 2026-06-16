@@ -109,6 +109,7 @@ nonisolated struct ClaudeCodeParser: TokenLogParser {
         let input: Int64
         let output: Int64
         let cached: Int64
+        let cacheCreation: Int64
         let reasoning: Int64
     }
 
@@ -169,6 +170,7 @@ nonisolated struct ClaudeCodeParser: TokenLogParser {
                 input: TokenParseHelpers.int64(usage, "input_tokens"),
                 output: TokenParseHelpers.int64(usage, "output_tokens"),
                 cached: TokenParseHelpers.int64(usage, "cache_read_input_tokens"),
+                cacheCreation: TokenParseHelpers.int64(usage, "cache_creation_input_tokens"),
                 reasoning: TokenParseHelpers.int64(usage, "reasoning_output_tokens")
             ))
         }
@@ -203,6 +205,7 @@ nonisolated struct ClaudeCodeParser: TokenLogParser {
                 inputTokens: p.input,
                 outputTokens: output,
                 cachedInputTokens: p.cached,
+                cacheCreationInputTokens: p.cacheCreation,
                 reasoningOutputTokens: reasoning,
                 sessionId: sessionId,
                 messageId: p.stableID

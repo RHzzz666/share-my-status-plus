@@ -46,6 +46,7 @@ nonisolated struct TokenModelUsageDTO: Codable {
     let inputTokens: Int64?
     let outputTokens: Int64?
     let cachedInputTokens: Int64?
+    let cacheCreationInputTokens: Int64?   // cache-WRITE; client SENDS it
     let reasoningOutputTokens: Int64?
 }
 
@@ -54,6 +55,7 @@ nonisolated struct TokenWindowUsageDTO: Codable {
     let inputTokens: Int64?
     let outputTokens: Int64?
     let cachedInputTokens: Int64?
+    let cacheCreationInputTokens: Int64?   // cache-WRITE; client SENDS it
     let reasoningOutputTokens: Int64?
     // Server-computed — always nil on the client so Codable omits them.
     let totalTokens: Int64?
@@ -63,11 +65,13 @@ nonisolated struct TokenWindowUsageDTO: Codable {
     init(inputTokens: Int64?,
          outputTokens: Int64?,
          cachedInputTokens: Int64?,
+         cacheCreationInputTokens: Int64?,
          reasoningOutputTokens: Int64?,
          byModel: [TokenModelUsageDTO]?) {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.cachedInputTokens = cachedInputTokens
+        self.cacheCreationInputTokens = cacheCreationInputTokens
         self.reasoningOutputTokens = reasoningOutputTokens
         self.totalTokens = nil          // server-computed
         self.estimatedCostUsd = nil     // server-computed

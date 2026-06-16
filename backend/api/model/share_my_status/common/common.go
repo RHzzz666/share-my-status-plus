@@ -1319,11 +1319,14 @@ func (p *Activity) String() string {
 // 单模型 token 用量（客户端上报，用于服务端定价与 topModel 推导）
 type TokenModelUsage struct {
 	// 模型名，如 claude-opus-4-8
-	Model                 string `thrift:"model,1,required" form:"model,required" json:"model,required" query:"model,required"`
-	InputTokens           *int64 `thrift:"inputTokens,2,optional" form:"inputTokens" json:"inputTokens,omitempty" query:"inputTokens"`
-	OutputTokens          *int64 `thrift:"outputTokens,3,optional" form:"outputTokens" json:"outputTokens,omitempty" query:"outputTokens"`
+	Model        string `thrift:"model,1,required" form:"model,required" json:"model,required" query:"model,required"`
+	InputTokens  *int64 `thrift:"inputTokens,2,optional" form:"inputTokens" json:"inputTokens,omitempty" query:"inputTokens"`
+	OutputTokens *int64 `thrift:"outputTokens,3,optional" form:"outputTokens" json:"outputTokens,omitempty" query:"outputTokens"`
+	// cache 读取（cache_read）
 	CachedInputTokens     *int64 `thrift:"cachedInputTokens,4,optional" form:"cachedInputTokens" json:"cachedInputTokens,omitempty" query:"cachedInputTokens"`
 	ReasoningOutputTokens *int64 `thrift:"reasoningOutputTokens,5,optional" form:"reasoningOutputTokens" json:"reasoningOutputTokens,omitempty" query:"reasoningOutputTokens"`
+	// cache 写入（cache_creation，Anthropic 按 1.25× input 计价）
+	CacheCreationInputTokens *int64 `thrift:"cacheCreationInputTokens,6,optional" form:"cacheCreationInputTokens" json:"cacheCreationInputTokens,omitempty" query:"cacheCreationInputTokens"`
 }
 
 func NewTokenModelUsage() *TokenModelUsage {
@@ -1373,12 +1376,22 @@ func (p *TokenModelUsage) GetReasoningOutputTokens() (v int64) {
 	return *p.ReasoningOutputTokens
 }
 
+var TokenModelUsage_CacheCreationInputTokens_DEFAULT int64
+
+func (p *TokenModelUsage) GetCacheCreationInputTokens() (v int64) {
+	if !p.IsSetCacheCreationInputTokens() {
+		return TokenModelUsage_CacheCreationInputTokens_DEFAULT
+	}
+	return *p.CacheCreationInputTokens
+}
+
 var fieldIDToName_TokenModelUsage = map[int16]string{
 	1: "model",
 	2: "inputTokens",
 	3: "outputTokens",
 	4: "cachedInputTokens",
 	5: "reasoningOutputTokens",
+	6: "cacheCreationInputTokens",
 }
 
 func (p *TokenModelUsage) IsSetInputTokens() bool {
@@ -1395,6 +1408,10 @@ func (p *TokenModelUsage) IsSetCachedInputTokens() bool {
 
 func (p *TokenModelUsage) IsSetReasoningOutputTokens() bool {
 	return p.ReasoningOutputTokens != nil
+}
+
+func (p *TokenModelUsage) IsSetCacheCreationInputTokens() bool {
+	return p.CacheCreationInputTokens != nil
 }
 
 func (p *TokenModelUsage) Read(iprot thrift.TProtocol) (err error) {
@@ -1453,6 +1470,14 @@ func (p *TokenModelUsage) Read(iprot thrift.TProtocol) (err error) {
 		case 5:
 			if fieldTypeId == thrift.I64 {
 				if err = p.ReadField5(iprot); err != nil {
+					goto ReadFieldError
+				}
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		case 6:
+			if fieldTypeId == thrift.I64 {
+				if err = p.ReadField6(iprot); err != nil {
 					goto ReadFieldError
 				}
 			} else if err = iprot.Skip(fieldTypeId); err != nil {
@@ -1548,6 +1573,17 @@ func (p *TokenModelUsage) ReadField5(iprot thrift.TProtocol) error {
 	p.ReasoningOutputTokens = _field
 	return nil
 }
+func (p *TokenModelUsage) ReadField6(iprot thrift.TProtocol) error {
+
+	var _field *int64
+	if v, err := iprot.ReadI64(); err != nil {
+		return err
+	} else {
+		_field = &v
+	}
+	p.CacheCreationInputTokens = _field
+	return nil
+}
 
 func (p *TokenModelUsage) Write(oprot thrift.TProtocol) (err error) {
 	var fieldId int16
@@ -1573,6 +1609,10 @@ func (p *TokenModelUsage) Write(oprot thrift.TProtocol) (err error) {
 		}
 		if err = p.writeField5(oprot); err != nil {
 			fieldId = 5
+			goto WriteFieldError
+		}
+		if err = p.writeField6(oprot); err != nil {
+			fieldId = 6
 			goto WriteFieldError
 		}
 	}
@@ -1686,6 +1726,25 @@ WriteFieldEndError:
 	return thrift.PrependError(fmt.Sprintf("%T write field 5 end error: ", p), err)
 }
 
+func (p *TokenModelUsage) writeField6(oprot thrift.TProtocol) (err error) {
+	if p.IsSetCacheCreationInputTokens() {
+		if err = oprot.WriteFieldBegin("cacheCreationInputTokens", thrift.I64, 6); err != nil {
+			goto WriteFieldBeginError
+		}
+		if err := oprot.WriteI64(*p.CacheCreationInputTokens); err != nil {
+			return err
+		}
+		if err = oprot.WriteFieldEnd(); err != nil {
+			goto WriteFieldEndError
+		}
+	}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 6 begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 6 end error: ", p), err)
+}
+
 func (p *TokenModelUsage) String() string {
 	if p == nil {
 		return "<nil>"
@@ -1696,16 +1755,19 @@ func (p *TokenModelUsage) String() string {
 
 // 某时间窗口的 token 用量
 type TokenWindowUsage struct {
-	InputTokens           *int64 `thrift:"inputTokens,1,optional" form:"inputTokens" json:"inputTokens,omitempty" query:"inputTokens"`
-	OutputTokens          *int64 `thrift:"outputTokens,2,optional" form:"outputTokens" json:"outputTokens,omitempty" query:"outputTokens"`
+	InputTokens  *int64 `thrift:"inputTokens,1,optional" form:"inputTokens" json:"inputTokens,omitempty" query:"inputTokens"`
+	OutputTokens *int64 `thrift:"outputTokens,2,optional" form:"outputTokens" json:"outputTokens,omitempty" query:"outputTokens"`
+	// cache 读取
 	CachedInputTokens     *int64 `thrift:"cachedInputTokens,3,optional" form:"cachedInputTokens" json:"cachedInputTokens,omitempty" query:"cachedInputTokens"`
 	ReasoningOutputTokens *int64 `thrift:"reasoningOutputTokens,4,optional" form:"reasoningOutputTokens" json:"reasoningOutputTokens,omitempty" query:"reasoningOutputTokens"`
-	// 服务端计算 = 四项之和
+	// 服务端计算 = 五项之和
 	TotalTokens *int64 `thrift:"totalTokens,5,optional" form:"totalTokens" json:"totalTokens,omitempty" query:"totalTokens"`
 	// 服务端计算（pricing）
 	EstimatedCostUsd *float64 `thrift:"estimatedCostUsd,6,optional" form:"estimatedCostUsd" json:"estimatedCostUsd,omitempty" query:"estimatedCostUsd"`
 	// 客户端上报 top-N 模型
 	ByModel []*TokenModelUsage `thrift:"byModel,7,optional,list<TokenModelUsage>" form:"byModel" json:"byModel,omitempty" query:"byModel"`
+	// cache 写入（cache_creation）
+	CacheCreationInputTokens *int64 `thrift:"cacheCreationInputTokens,8,optional" form:"cacheCreationInputTokens" json:"cacheCreationInputTokens,omitempty" query:"cacheCreationInputTokens"`
 }
 
 func NewTokenWindowUsage() *TokenWindowUsage {
@@ -1778,6 +1840,15 @@ func (p *TokenWindowUsage) GetByModel() (v []*TokenModelUsage) {
 	return p.ByModel
 }
 
+var TokenWindowUsage_CacheCreationInputTokens_DEFAULT int64
+
+func (p *TokenWindowUsage) GetCacheCreationInputTokens() (v int64) {
+	if !p.IsSetCacheCreationInputTokens() {
+		return TokenWindowUsage_CacheCreationInputTokens_DEFAULT
+	}
+	return *p.CacheCreationInputTokens
+}
+
 var fieldIDToName_TokenWindowUsage = map[int16]string{
 	1: "inputTokens",
 	2: "outputTokens",
@@ -1786,6 +1857,7 @@ var fieldIDToName_TokenWindowUsage = map[int16]string{
 	5: "totalTokens",
 	6: "estimatedCostUsd",
 	7: "byModel",
+	8: "cacheCreationInputTokens",
 }
 
 func (p *TokenWindowUsage) IsSetInputTokens() bool {
@@ -1814,6 +1886,10 @@ func (p *TokenWindowUsage) IsSetEstimatedCostUsd() bool {
 
 func (p *TokenWindowUsage) IsSetByModel() bool {
 	return p.ByModel != nil
+}
+
+func (p *TokenWindowUsage) IsSetCacheCreationInputTokens() bool {
+	return p.CacheCreationInputTokens != nil
 }
 
 func (p *TokenWindowUsage) Read(iprot thrift.TProtocol) (err error) {
@@ -1886,6 +1962,14 @@ func (p *TokenWindowUsage) Read(iprot thrift.TProtocol) (err error) {
 		case 7:
 			if fieldTypeId == thrift.LIST {
 				if err = p.ReadField7(iprot); err != nil {
+					goto ReadFieldError
+				}
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		case 8:
+			if fieldTypeId == thrift.I64 {
+				if err = p.ReadField8(iprot); err != nil {
 					goto ReadFieldError
 				}
 			} else if err = iprot.Skip(fieldTypeId); err != nil {
@@ -2009,6 +2093,17 @@ func (p *TokenWindowUsage) ReadField7(iprot thrift.TProtocol) error {
 	p.ByModel = _field
 	return nil
 }
+func (p *TokenWindowUsage) ReadField8(iprot thrift.TProtocol) error {
+
+	var _field *int64
+	if v, err := iprot.ReadI64(); err != nil {
+		return err
+	} else {
+		_field = &v
+	}
+	p.CacheCreationInputTokens = _field
+	return nil
+}
 
 func (p *TokenWindowUsage) Write(oprot thrift.TProtocol) (err error) {
 	var fieldId int16
@@ -2042,6 +2137,10 @@ func (p *TokenWindowUsage) Write(oprot thrift.TProtocol) (err error) {
 		}
 		if err = p.writeField7(oprot); err != nil {
 			fieldId = 7
+			goto WriteFieldError
+		}
+		if err = p.writeField8(oprot); err != nil {
+			fieldId = 8
 			goto WriteFieldError
 		}
 	}
@@ -2201,6 +2300,25 @@ WriteFieldBeginError:
 	return thrift.PrependError(fmt.Sprintf("%T write field 7 begin error: ", p), err)
 WriteFieldEndError:
 	return thrift.PrependError(fmt.Sprintf("%T write field 7 end error: ", p), err)
+}
+
+func (p *TokenWindowUsage) writeField8(oprot thrift.TProtocol) (err error) {
+	if p.IsSetCacheCreationInputTokens() {
+		if err = oprot.WriteFieldBegin("cacheCreationInputTokens", thrift.I64, 8); err != nil {
+			goto WriteFieldBeginError
+		}
+		if err := oprot.WriteI64(*p.CacheCreationInputTokens); err != nil {
+			return err
+		}
+		if err = oprot.WriteFieldEnd(); err != nil {
+			goto WriteFieldEndError
+		}
+	}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 8 begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 8 end error: ", p), err)
 }
 
 func (p *TokenWindowUsage) String() string {

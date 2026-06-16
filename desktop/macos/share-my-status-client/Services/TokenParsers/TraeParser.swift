@@ -211,6 +211,7 @@ nonisolated struct TraeParser: TokenLogParser {
             inputTokens: normalizedInput,
             outputTokens: normalizedOutput,
             cachedInputTokens: cacheRead,
+            cacheCreationInputTokens: 0,  // trae-cli has no cache-write concept
             reasoningOutputTokens: reasoning,
             sessionId: sessionId,
             messageId: messageId

@@ -157,6 +157,7 @@ nonisolated struct TokenScanCache: Codable {
         let inputTokens: Int64
         let outputTokens: Int64
         let cachedInputTokens: Int64
+        let cacheCreationInputTokens: Int64
         let reasoningOutputTokens: Int64
         let sessionId: String
         let messageId: String
@@ -169,9 +170,28 @@ nonisolated struct TokenScanCache: Codable {
             self.inputTokens = e.inputTokens
             self.outputTokens = e.outputTokens
             self.cachedInputTokens = e.cachedInputTokens
+            self.cacheCreationInputTokens = e.cacheCreationInputTokens
             self.reasoningOutputTokens = e.reasoningOutputTokens
             self.sessionId = e.sessionId
             self.messageId = e.messageId
+        }
+
+        // Custom decode so caches written before cacheCreationInputTokens existed
+        // still load (the key is simply absent there → default 0). Everything else
+        // matches the synthesized behavior.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            source = try c.decode(String.self, forKey: .source)
+            model = try c.decode(String.self, forKey: .model)
+            project = try c.decode(String.self, forKey: .project)
+            timestampMs = try c.decode(Int64.self, forKey: .timestampMs)
+            inputTokens = try c.decode(Int64.self, forKey: .inputTokens)
+            outputTokens = try c.decode(Int64.self, forKey: .outputTokens)
+            cachedInputTokens = try c.decode(Int64.self, forKey: .cachedInputTokens)
+            cacheCreationInputTokens = try c.decodeIfPresent(Int64.self, forKey: .cacheCreationInputTokens) ?? 0
+            reasoningOutputTokens = try c.decode(Int64.self, forKey: .reasoningOutputTokens)
+            sessionId = try c.decode(String.self, forKey: .sessionId)
+            messageId = try c.decode(String.self, forKey: .messageId)
         }
 
         var entry: TokenEntry {
@@ -183,6 +203,7 @@ nonisolated struct TokenScanCache: Codable {
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
                 cachedInputTokens: cachedInputTokens,
+                cacheCreationInputTokens: cacheCreationInputTokens,
                 reasoningOutputTokens: reasoningOutputTokens,
                 sessionId: sessionId,
                 messageId: messageId

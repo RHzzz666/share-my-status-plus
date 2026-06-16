@@ -23,14 +23,55 @@ func TestPriceWindow_ByModel(t *testing.T) {
 	}
 	out := priceWindow(w)
 
-	// totalTokens = sum of the four aggregate counters = 1.5M + 0.5M
+	// totalTokens = sum of the aggregate counters = 1.5M + 0.5M
 	if out.TotalTokens == nil || *out.TotalTokens != 2_000_000 {
 		t.Fatalf("TotalTokens = %v, want 2000000", out.TotalTokens)
 	}
-	// cost = opus(1M in*15 + 0.2M out*75) + sonnet(0.5M in*3 + 0.3M out*15)
-	//      = (15 + 15) + (1.5 + 4.5) = 30 + 6 = 36
-	if out.EstimatedCostUsd == nil || !almostEqual(*out.EstimatedCostUsd, 36.0) {
-		t.Fatalf("EstimatedCostUsd = %v, want 36.0", out.EstimatedCostUsd)
+	// cost = opus(1M in*5 + 0.2M out*25) + sonnet(0.5M in*3 + 0.3M out*15)
+	//      = (5 + 5) + (1.5 + 4.5) = 10 + 6 = 16  (2026 定价：opus input 5，非旧 15)
+	if out.EstimatedCostUsd == nil || !almostEqual(*out.EstimatedCostUsd, 16.0) {
+		t.Fatalf("EstimatedCostUsd = %v, want 16.0", out.EstimatedCostUsd)
+	}
+}
+
+// cacheCreation 作为第 5 个计数器：应计入 totalTokens 并参与定价（Anthropic 1.25× input）。
+func TestPriceWindow_CacheCreationCounted(t *testing.T) {
+	w := &common.TokenWindowUsage{
+		ByModel: []*common.TokenModelUsage{
+			{Model: "claude-opus-4-8", InputTokens: i64p(1_000_000), CacheCreationInputTokens: i64p(1_000_000)},
+		},
+	}
+	out := priceWindow(w)
+	if out.CacheCreationInputTokens == nil || *out.CacheCreationInputTokens != 1_000_000 {
+		t.Fatalf("derived CacheCreationInputTokens = %v, want 1000000", out.CacheCreationInputTokens)
+	}
+	// total = 1M input + 1M cacheCreation = 2M
+	if out.TotalTokens == nil || *out.TotalTokens != 2_000_000 {
+		t.Fatalf("TotalTokens = %v, want 2000000 (input + cacheCreation)", out.TotalTokens)
+	}
+	// cost(opus) = 1M in*5 + 1M cacheCreation*6.25 = 5 + 6.25 = 11.25
+	if out.EstimatedCostUsd == nil || !almostEqual(*out.EstimatedCostUsd, 11.25) {
+		t.Fatalf("EstimatedCostUsd = %v, want 11.25", out.EstimatedCostUsd)
+	}
+}
+
+// 负值防护：客户端异常上报的负聚合计数应钳制为 0，不污染 total 与成本。
+func TestPriceWindow_NegativeClamped(t *testing.T) {
+	w := &common.TokenWindowUsage{
+		InputTokens:              i64p(-100),
+		CacheCreationInputTokens: i64p(-50),
+		OutputTokens:             i64p(1_000_000),
+	}
+	out := priceWindow(w)
+	if out.InputTokens == nil || *out.InputTokens != 0 {
+		t.Fatalf("negative InputTokens not clamped: %v", out.InputTokens)
+	}
+	if out.CacheCreationInputTokens == nil || *out.CacheCreationInputTokens != 0 {
+		t.Fatalf("negative CacheCreationInputTokens not clamped: %v", out.CacheCreationInputTokens)
+	}
+	// total = 0 + 0 + 1M output = 1M
+	if out.TotalTokens == nil || *out.TotalTokens != 1_000_000 {
+		t.Fatalf("TotalTokens = %v, want 1000000", out.TotalTokens)
 	}
 }
 
@@ -71,9 +112,9 @@ func TestPriceWindow_ByModelOnly_DerivesAggregates(t *testing.T) {
 	if out.TotalTokens == nil || *out.TotalTokens != 1_200_000 {
 		t.Fatalf("derived TotalTokens = %v, want 1200000", out.TotalTokens)
 	}
-	// cost(opus) = 1M*15 + 0.2M*75 = 15 + 15 = 30
-	if out.EstimatedCostUsd == nil || !almostEqual(*out.EstimatedCostUsd, 30.0) {
-		t.Fatalf("EstimatedCostUsd = %v, want 30.0", out.EstimatedCostUsd)
+	// cost(opus) = 1M in*5 + 0.2M out*25 = 5 + 5 = 10  (2026 定价)
+	if out.EstimatedCostUsd == nil || !almostEqual(*out.EstimatedCostUsd, 10.0) {
+		t.Fatalf("EstimatedCostUsd = %v, want 10.0", out.EstimatedCostUsd)
 	}
 }
 

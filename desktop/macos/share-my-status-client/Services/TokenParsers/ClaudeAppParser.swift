@@ -190,6 +190,9 @@ nonisolated struct ClaudeAppParser: TokenLogParser {
                 inputTokens: r.input + r.cacheWrite,
                 outputTokens: r.output,
                 cachedInputTokens: r.cacheRead,
+                // claude_app folds cacheWrite INTO input (kaboo-aligned), so the
+                // separate cacheCreation field stays 0.
+                cacheCreationInputTokens: 0,
                 reasoningOutputTokens: 0,
                 sessionId: r.sessionID,
                 // Aggregator dedups by "source:messageId" -> "claude-app:req:<id>",

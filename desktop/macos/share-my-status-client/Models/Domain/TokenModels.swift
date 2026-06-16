@@ -3,8 +3,8 @@
 //  share-my-status-client
 //
 //  Pure, Foundation-only domain models and aggregation logic for AI token usage.
-//  Intentionally free of AppKit / SwiftUI so the parsers + aggregation can be
-//  unit-tested standalone with `swiftc` (see desktop/macos/TokenUsageTests).
+//  Intentionally free of AppKit / SwiftUI so the parsers + aggregation stay
+//  trivially unit-testable.
 //
 
 import Foundation
@@ -32,6 +32,11 @@ nonisolated struct TokenEntry: Equatable {
     let inputTokens: Int64
     let outputTokens: Int64
     let cachedInputTokens: Int64
+    /// Anthropic cache-WRITE tokens (`cache_creation_input_tokens`). A separate
+    /// counter, parallel to the other four (never folded into input/cached) —
+    /// matches kaboo's claude-code accounting where cache_creation is the dominant
+    /// component of usage.
+    let cacheCreationInputTokens: Int64
     let reasoningOutputTokens: Int64
     /// Distinct session this entry belongs to (used for today's sessionCount).
     let sessionId: String
@@ -46,6 +51,7 @@ nonisolated struct TokenEntry: Equatable {
          inputTokens: Int64 = 0,
          outputTokens: Int64 = 0,
          cachedInputTokens: Int64 = 0,
+         cacheCreationInputTokens: Int64 = 0,
          reasoningOutputTokens: Int64 = 0,
          sessionId: String = "",
          messageId: String = "") {
@@ -56,14 +62,16 @@ nonisolated struct TokenEntry: Equatable {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.cachedInputTokens = cachedInputTokens
+        self.cacheCreationInputTokens = cacheCreationInputTokens
         self.reasoningOutputTokens = reasoningOutputTokens
         self.sessionId = sessionId
         self.messageId = messageId
     }
 
-    /// Sum of the four counters. Used for top-model / top-N ranking.
+    /// Sum of the five counters. Used for top-model / top-N ranking.
     var totalTokens: Int64 {
-        inputTokens + outputTokens + cachedInputTokens + reasoningOutputTokens
+        inputTokens + outputTokens + cachedInputTokens
+            + cacheCreationInputTokens + reasoningOutputTokens
     }
 }
 
@@ -75,10 +83,12 @@ nonisolated struct TokenModelAggregate: Equatable {
     var inputTokens: Int64 = 0
     var outputTokens: Int64 = 0
     var cachedInputTokens: Int64 = 0
+    var cacheCreationInputTokens: Int64 = 0
     var reasoningOutputTokens: Int64 = 0
 
     var totalTokens: Int64 {
-        inputTokens + outputTokens + cachedInputTokens + reasoningOutputTokens
+        inputTokens + outputTokens + cachedInputTokens
+            + cacheCreationInputTokens + reasoningOutputTokens
     }
 }
 
@@ -87,12 +97,14 @@ nonisolated struct TokenWindowAggregate: Equatable {
     var inputTokens: Int64 = 0
     var outputTokens: Int64 = 0
     var cachedInputTokens: Int64 = 0
+    var cacheCreationInputTokens: Int64 = 0
     var reasoningOutputTokens: Int64 = 0
     /// Top-N models by total tokens, with the remainder folded into "other".
     var byModel: [TokenModelAggregate] = []
 
     var totalTokens: Int64 {
-        inputTokens + outputTokens + cachedInputTokens + reasoningOutputTokens
+        inputTokens + outputTokens + cachedInputTokens
+            + cacheCreationInputTokens + reasoningOutputTokens
     }
 }
 
@@ -223,12 +235,14 @@ nonisolated enum TokenAggregator {
             w.inputTokens += e.inputTokens
             w.outputTokens += e.outputTokens
             w.cachedInputTokens += e.cachedInputTokens
+            w.cacheCreationInputTokens += e.cacheCreationInputTokens
             w.reasoningOutputTokens += e.reasoningOutputTokens
 
             var m = byModel[e.model] ?? TokenModelAggregate(model: e.model)
             m.inputTokens += e.inputTokens
             m.outputTokens += e.outputTokens
             m.cachedInputTokens += e.cachedInputTokens
+            m.cacheCreationInputTokens += e.cacheCreationInputTokens
             m.reasoningOutputTokens += e.reasoningOutputTokens
             byModel[e.model] = m
         }
@@ -257,6 +271,7 @@ nonisolated enum TokenAggregator {
             other.inputTokens += m.inputTokens
             other.outputTokens += m.outputTokens
             other.cachedInputTokens += m.cachedInputTokens
+            other.cacheCreationInputTokens += m.cacheCreationInputTokens
             other.reasoningOutputTokens += m.reasoningOutputTokens
         }
         if other.totalTokens > 0 {
@@ -294,6 +309,7 @@ nonisolated extension TokenWindowAggregate {
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cachedInputTokens: cachedInputTokens,
+            cacheCreationInputTokens: cacheCreationInputTokens,
             reasoningOutputTokens: reasoningOutputTokens,
             byModel: byModel.map { $0.toDTO() }
         )
@@ -307,6 +323,7 @@ nonisolated extension TokenModelAggregate {
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cachedInputTokens: cachedInputTokens,
+            cacheCreationInputTokens: cacheCreationInputTokens,
             reasoningOutputTokens: reasoningOutputTokens
         )
     }

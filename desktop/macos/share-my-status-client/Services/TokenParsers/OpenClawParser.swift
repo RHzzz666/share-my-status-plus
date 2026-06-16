@@ -221,6 +221,8 @@ nonisolated struct OpenClawParser: TokenLogParser {
                 inputTokens: input,
                 outputTokens: output,
                 cachedInputTokens: cacheRead + cacheWrite,
+                // openclaw folds cacheWrite into cached (kaboo-aligned); no separate field.
+                cacheCreationInputTokens: 0,
                 reasoningOutputTokens: 0,
                 sessionId: sessionId,
                 messageId: messageId

@@ -223,6 +223,8 @@ nonisolated struct CursorParser: TokenLogParser {
             inputTokens: input,
             outputTokens: output,
             cachedInputTokens: cacheRead,
+            // cursor folds cache-write into input (kaboo CSV semantics); no separate field.
+            cacheCreationInputTokens: 0,
             reasoningOutputTokens: 0,
             sessionId: "cursor",
             messageId: messageId
@@ -280,6 +282,8 @@ nonisolated struct CursorParser: TokenLogParser {
                 inputTokens: input,
                 outputTokens: output,
                 cachedInputTokens: cacheRead,
+                // cursor folds cache-write into input (kaboo CSV semantics); no separate field.
+                cacheCreationInputTokens: 0,
                 reasoningOutputTokens: 0,
                 sessionId: "cursor",
                 messageId: messageId

@@ -243,6 +243,7 @@ func renderTokenVariables(template string, tokens *common.TokenUsage) string {
 	result = strings.ReplaceAll(result, "{tokenInToday}", strconv.FormatInt(windowField(today, fieldInput), 10))
 	result = strings.ReplaceAll(result, "{tokenOutToday}", strconv.FormatInt(windowField(today, fieldOutput), 10))
 	result = strings.ReplaceAll(result, "{tokenCacheToday}", strconv.FormatInt(windowField(today, fieldCached), 10))
+	result = strings.ReplaceAll(result, "{tokenCacheCreateToday}", strconv.FormatInt(windowField(today, fieldCacheCreation), 10))
 	result = strings.ReplaceAll(result, "{tokenReasonToday}", strconv.FormatInt(windowField(today, fieldReasoning), 10))
 
 	// 近 7 天
@@ -269,6 +270,7 @@ const (
 	fieldInput tokenField = iota
 	fieldOutput
 	fieldCached
+	fieldCacheCreation
 	fieldReasoning
 )
 
@@ -283,6 +285,8 @@ func windowField(w *common.TokenWindowUsage, f tokenField) int64 {
 		return derefInt64(w.OutputTokens)
 	case fieldCached:
 		return derefInt64(w.CachedInputTokens)
+	case fieldCacheCreation:
+		return derefInt64(w.CacheCreationInputTokens)
 	case fieldReasoning:
 		return derefInt64(w.ReasoningOutputTokens)
 	default:
@@ -290,7 +294,7 @@ func windowField(w *common.TokenWindowUsage, f tokenField) int64 {
 	}
 }
 
-// windowTotalTokens 返回窗口总 token 数：优先用服务端写入的 TotalTokens，否则按四项求和。
+// windowTotalTokens 返回窗口总 token 数：优先用服务端写入的 TotalTokens，否则按五项求和。
 func windowTotalTokens(w *common.TokenWindowUsage) int64 {
 	if w == nil {
 		return 0
@@ -299,7 +303,8 @@ func windowTotalTokens(w *common.TokenWindowUsage) int64 {
 		return *w.TotalTokens
 	}
 	return derefInt64(w.InputTokens) + derefInt64(w.OutputTokens) +
-		derefInt64(w.CachedInputTokens) + derefInt64(w.ReasoningOutputTokens)
+		derefInt64(w.CachedInputTokens) + derefInt64(w.CacheCreationInputTokens) +
+		derefInt64(w.ReasoningOutputTokens)
 }
 
 func windowCostUsd(w *common.TokenWindowUsage) float64 {

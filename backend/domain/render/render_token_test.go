@@ -51,12 +51,13 @@ func sampleTokens() *common.TokenUsage {
 		SessionCount: i64p(12),
 		WindowDays:   i32p(30),
 		Today: &common.TokenWindowUsage{
-			InputTokens:           i64p(800_000),
-			OutputTokens:          i64p(300_000),
-			CachedInputTokens:     i64p(120_000),
-			ReasoningOutputTokens: i64p(14_567),
-			TotalTokens:           i64p(1_234_567),
-			EstimatedCostUsd:      f64p(3.45),
+			InputTokens:              i64p(800_000),
+			OutputTokens:             i64p(300_000),
+			CachedInputTokens:        i64p(120_000),
+			CacheCreationInputTokens: i64p(45_000),
+			ReasoningOutputTokens:    i64p(14_567),
+			TotalTokens:              i64p(1_234_567),
+			EstimatedCostUsd:         f64p(3.45),
 		},
 		Last7d: &common.TokenWindowUsage{
 			TotalTokens:      i64p(8_900_000),
@@ -71,12 +72,12 @@ func sampleTokens() *common.TokenUsage {
 
 func TestRenderTokenVariables_WithData(t *testing.T) {
 	tpl := "今日{tokensTodayH}({tokensToday}) 花费{tokenCostToday} 入{tokenInToday} 出{tokenOutToday} " +
-		"缓存{tokenCacheToday} 推理{tokenReasonToday} | 7d {tokens7dH}/{tokenCost7d} | " +
+		"缓存{tokenCacheToday} 写入{tokenCacheCreateToday} 推理{tokenReasonToday} | 7d {tokens7dH}/{tokenCost7d} | " +
 		"总 {tokensTotalH}/{tokenCostTotal} | 模型 {topModel} 会话{tokenSessions} 窗口{tokenWindowDays}d"
 	got := renderTokenVariables(tpl, sampleTokens())
 
 	wantContains := []string{
-		"今日1.2M(1234567)", "花费$3.45", "入800000", "出300000", "缓存120000", "推理14567",
+		"今日1.2M(1234567)", "花费$3.45", "入800000", "出300000", "缓存120000", "写入45000", "推理14567",
 		"7d 8.9M/$21.30", "总 34.6M/$98.76", "模型 claude-opus-4-8", "会话12", "窗口30d",
 	}
 	for _, w := range wantContains {
@@ -98,16 +99,17 @@ func TestRenderTokenVariables_Nil(t *testing.T) {
 	}
 }
 
-// 当窗口未带 TotalTokens 时，按四项求和。
+// 当窗口未带 TotalTokens 时，按五项求和（含 cacheCreation）。
 func TestWindowTotalTokens_SumFallback(t *testing.T) {
 	w := &common.TokenWindowUsage{
-		InputTokens:           i64p(10),
-		OutputTokens:          i64p(20),
-		CachedInputTokens:     i64p(5),
-		ReasoningOutputTokens: i64p(1),
+		InputTokens:              i64p(10),
+		OutputTokens:             i64p(20),
+		CachedInputTokens:        i64p(5),
+		CacheCreationInputTokens: i64p(4),
+		ReasoningOutputTokens:    i64p(1),
 	}
-	if got := windowTotalTokens(w); got != 36 {
-		t.Errorf("windowTotalTokens sum fallback = %d, want 36", got)
+	if got := windowTotalTokens(w); got != 40 {
+		t.Errorf("windowTotalTokens sum fallback = %d, want 40", got)
 	}
 	if got := windowTotalTokens(nil); got != 0 {
 		t.Errorf("windowTotalTokens(nil) = %d, want 0", got)

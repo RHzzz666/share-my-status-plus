@@ -32,6 +32,7 @@ macOS 客户端：扫描本地 AI 工具日志
 | `{tokenInToday}` | 今日输入 token | `800000` |
 | `{tokenOutToday}` | 今日输出 token | `300000` |
 | `{tokenCacheToday}` | 今日缓存读取 token | `120000` |
+| `{tokenCacheCreateToday}` | 今日缓存写入 token | `45000` |
 | `{tokenReasonToday}` | 今日推理 token | `14567` |
 | `{tokens7d}` / `{tokens7dH}` | 近 7 天 token / 可读 | `8901234` / `8.9M` |
 | `{tokenCost7d}` | 近 7 天预计花费 | `$21.30` |

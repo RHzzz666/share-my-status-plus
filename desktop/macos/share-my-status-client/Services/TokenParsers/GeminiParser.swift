@@ -173,6 +173,7 @@ nonisolated struct GeminiParser: TokenLogParser {
                 inputTokens: input,
                 outputTokens: output,
                 cachedInputTokens: cached,
+                cacheCreationInputTokens: 0,  // gemini-cli has no cache-write concept
                 reasoningOutputTokens: thoughts,
                 sessionId: sessionId,
                 messageId: messageId

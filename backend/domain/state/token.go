@@ -6,7 +6,7 @@ import (
 )
 
 // priceTokenUsage 对客户端上报的 token 用量块做服务端计算：
-//   - 每个窗口填充 totalTokens（四项之和）与 estimatedCostUsd（按 byModel 逐模型定价）
+//   - 每个窗口填充 totalTokens（五项之和）与 estimatedCostUsd（按 byModel 逐模型定价）
 //   - 若 topModel 为空，则从当日（或总窗口）的 byModel 推导
 //
 // 返回新的块（不修改入参）。入参为 nil 时返回 nil。
@@ -50,7 +50,7 @@ func priceWindow(w *common.TokenWindowUsage) *common.TokenWindowUsage {
 	}
 
 	// byModel 各项求和（用于回填缺失的聚合计数）。
-	var bmIn, bmOut, bmCached, bmReason int64
+	var bmIn, bmOut, bmCached, bmCacheCreation, bmReason int64
 	for _, m := range w.ByModel {
 		if m == nil {
 			continue
@@ -58,22 +58,27 @@ func priceWindow(w *common.TokenWindowUsage) *common.TokenWindowUsage {
 		bmIn += derefI64(m.InputTokens)
 		bmOut += derefI64(m.OutputTokens)
 		bmCached += derefI64(m.CachedInputTokens)
+		bmCacheCreation += derefI64(m.CacheCreationInputTokens)
 		bmReason += derefI64(m.ReasoningOutputTokens)
 	}
 
-	in := pickAggregate(w.InputTokens, bmIn)
-	outTok := pickAggregate(w.OutputTokens, bmOut)
-	cached := pickAggregate(w.CachedInputTokens, bmCached)
-	reason := pickAggregate(w.ReasoningOutputTokens, bmReason)
-	total := in + outTok + cached + reason
+	// 对每个聚合计数钳制 ≥0：客户端异常或时间倒退可能上报负值，
+	// 与 kaboo 的负值防护对齐，避免污染 totalTokens 与成本。
+	in := clampNonNeg(pickAggregate(w.InputTokens, bmIn))
+	outTok := clampNonNeg(pickAggregate(w.OutputTokens, bmOut))
+	cached := clampNonNeg(pickAggregate(w.CachedInputTokens, bmCached))
+	cacheCreation := clampNonNeg(pickAggregate(w.CacheCreationInputTokens, bmCacheCreation))
+	reason := clampNonNeg(pickAggregate(w.ReasoningOutputTokens, bmReason))
+	total := in + outTok + cached + cacheCreation + reason
 
 	out := &common.TokenWindowUsage{
-		InputTokens:           &in,
-		OutputTokens:          &outTok,
-		CachedInputTokens:     &cached,
-		ReasoningOutputTokens: &reason,
-		TotalTokens:           &total,
-		ByModel:               w.ByModel,
+		InputTokens:              &in,
+		OutputTokens:             &outTok,
+		CachedInputTokens:        &cached,
+		CacheCreationInputTokens: &cacheCreation,
+		ReasoningOutputTokens:    &reason,
+		TotalTokens:              &total,
+		ByModel:                  w.ByModel,
 	}
 
 	var cost float64
@@ -86,12 +91,13 @@ func priceWindow(w *common.TokenWindowUsage) *common.TokenWindowUsage {
 			cost += pricing.EstimateCostUsd(
 				m.Model,
 				derefI64(m.InputTokens), derefI64(m.OutputTokens),
-				derefI64(m.CachedInputTokens), derefI64(m.ReasoningOutputTokens),
+				derefI64(m.CachedInputTokens), derefI64(m.CacheCreationInputTokens),
+				derefI64(m.ReasoningOutputTokens),
 			)
 		}
 	} else {
 		// 没有逐模型明细时，按未知档位对聚合数定价。
-		cost = pricing.EstimateCostUsd("", in, outTok, cached, reason)
+		cost = pricing.EstimateCostUsd("", in, outTok, cached, cacheCreation, reason)
 	}
 	out.EstimatedCostUsd = &cost
 
@@ -120,7 +126,8 @@ func topModelOfWindow(w *common.TokenWindowUsage) string {
 			continue
 		}
 		t := derefI64(m.InputTokens) + derefI64(m.OutputTokens) +
-			derefI64(m.CachedInputTokens) + derefI64(m.ReasoningOutputTokens)
+			derefI64(m.CachedInputTokens) + derefI64(m.CacheCreationInputTokens) +
+			derefI64(m.ReasoningOutputTokens)
 		if t > bestTotal {
 			bestTotal = t
 			best = m.Model
@@ -134,4 +141,12 @@ func derefI64(p *int64) int64 {
 		return 0
 	}
 	return *p
+}
+
+// clampNonNeg 将负数钳制为 0（防御客户端上报的异常负值）。
+func clampNonNeg(v int64) int64 {
+	if v < 0 {
+		return 0
+	}
+	return v
 }

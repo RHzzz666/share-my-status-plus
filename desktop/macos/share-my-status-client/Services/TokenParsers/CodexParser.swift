@@ -112,8 +112,11 @@ nonisolated struct CodexParser: TokenLogParser {
 
             let cachedInput = TokenParseHelpers.int64(usage, "cached_input_tokens")
                 + TokenParseHelpers.int64(usage, "cache_read_input_tokens")
+            let cacheCreation = TokenParseHelpers.int64(usage, "cache_creation_input_tokens")
             let reasoning = TokenParseHelpers.int64(usage, "reasoning_output_tokens")
-            let input = max(0, TokenParseHelpers.int64(usage, "input_tokens") - cachedInput)
+            // cache_creation is carved OUT of input (alongside cache_read), so the
+            // counters never overlap — mirrors kaboo (commit b6428ff9).
+            let input = max(0, TokenParseHelpers.int64(usage, "input_tokens") - cachedInput - cacheCreation)
             let output = max(0, TokenParseHelpers.int64(usage, "output_tokens") - reasoning)
 
             // Codex rollouts have no stable per-turn message id; fingerprint by
@@ -125,7 +128,7 @@ nonisolated struct CodexParser: TokenLogParser {
                 totalInput = TokenParseHelpers.int64(total, "input_tokens")
                 totalOutput = TokenParseHelpers.int64(total, "output_tokens")
             }
-            let messageId = "tok|\(model)|\(input)|\(output)|\(cachedInput)|\(reasoning)|\(totalInput)|\(totalOutput)"
+            let messageId = "tok|\(model)|\(input)|\(output)|\(cachedInput)|\(cacheCreation)|\(reasoning)|\(totalInput)|\(totalOutput)"
 
             entries.append(TokenEntry(
                 source: "codex",
@@ -135,6 +138,7 @@ nonisolated struct CodexParser: TokenLogParser {
                 inputTokens: input,
                 outputTokens: output,
                 cachedInputTokens: cachedInput,
+                cacheCreationInputTokens: cacheCreation,
                 reasoningOutputTokens: reasoning,
                 sessionId: sessionId,
                 messageId: messageId

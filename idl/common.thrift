@@ -36,19 +36,21 @@ struct TokenModelUsage {
     1: required string model;               // 模型名，如 claude-opus-4-8
     2: optional i64 inputTokens;
     3: optional i64 outputTokens;
-    4: optional i64 cachedInputTokens;
+    4: optional i64 cachedInputTokens;          // cache 读取（cache_read）
     5: optional i64 reasoningOutputTokens;
+    6: optional i64 cacheCreationInputTokens;   // cache 写入（cache_creation，Anthropic 按 1.25× input 计价）
 }
 
 // 某时间窗口的 token 用量
 struct TokenWindowUsage {
     1: optional i64 inputTokens;
     2: optional i64 outputTokens;
-    3: optional i64 cachedInputTokens;
+    3: optional i64 cachedInputTokens;          // cache 读取
     4: optional i64 reasoningOutputTokens;
-    5: optional i64 totalTokens;            // 服务端计算 = 四项之和
+    5: optional i64 totalTokens;            // 服务端计算 = 五项之和
     6: optional double estimatedCostUsd;    // 服务端计算（pricing）
     7: optional list<TokenModelUsage> byModel;  // 客户端上报 top-N 模型
+    8: optional i64 cacheCreationInputTokens;   // cache 写入（cache_creation）
 }
 
 // Token 用量块（随快照上报与存储，供个性签名渲染）

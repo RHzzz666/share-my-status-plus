@@ -33,7 +33,7 @@ run("trae",        TraeParser())
 let agg = TokenAggregator.aggregate(entries: entries, windowDays: windowDays, now: Date(), calendar: .current)
 
 func line(_ label: String, _ w: TokenWindowAggregate) -> String {
-    "  \(label): \(TokenFormatting.compact(w.totalTokens))  (in \(w.inputTokens), out \(w.outputTokens), cache \(w.cachedInputTokens), reason \(w.reasoningOutputTokens))"
+    "  \(label): \(TokenFormatting.compact(w.totalTokens))  (in \(w.inputTokens), out \(w.outputTokens), cacheRead \(w.cachedInputTokens), cacheWrite \(w.cacheCreationInputTokens), reason \(w.reasoningOutputTokens))"
 }
 err("")
 err("=== Your token usage ===")

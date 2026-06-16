@@ -76,8 +76,9 @@ func TestTokenSignatureE2E_FromWireJSON(t *testing.T) {
 	    "today": {
 	      "inputTokens": 1000000,
 	      "outputTokens": 200000,
+	      "cacheCreationInputTokens": 800000,
 	      "byModel": [
-	        {"model":"claude-opus-4-8","inputTokens":1000000,"outputTokens":200000}
+	        {"model":"claude-opus-4-8","inputTokens":1000000,"outputTokens":200000,"cacheCreationInputTokens":800000}
 	      ]
 	    },
 	    "topModel": "claude-opus-4-8",
@@ -94,6 +95,10 @@ func TestTokenSignatureE2E_FromWireJSON(t *testing.T) {
 	if event.Tokens == nil || event.Tokens.Today == nil || len(event.Tokens.Today.ByModel) != 1 {
 		t.Fatalf("wire JSON did not decode into the expected token structure: %+v", event.Tokens)
 	}
+	// 跨语言契约校验：第 5 个计数器 cacheCreationInputTokens 必须解码成功（旧契约会丢失它）。
+	if event.Tokens.Today.CacheCreationInputTokens == nil || *event.Tokens.Today.CacheCreationInputTokens != 800000 {
+		t.Fatalf("cacheCreationInputTokens did not decode: %+v", event.Tokens.Today.CacheCreationInputTokens)
+	}
 
 	if _, err := stateSvc.BatchReport(ctx, u.ID, []*common.ReportEvent{&event}); err != nil {
 		t.Fatalf("batch report: %v", err)
@@ -107,7 +112,9 @@ func TestTokenSignatureE2E_FromWireJSON(t *testing.T) {
 	}
 	got := title.Inline.Title
 	t.Logf("rendered from wire JSON: %s", got)
-	want := "今日 1.2M 花费$30.00 模型claude-opus-4-8 会话7"
+	// today = 1M in + 0.2M out + 0.8M cacheCreation = 2M tokens
+	// cost(opus, 2026) = 1M*5 + 0.2M*25 + 0.8M*6.25 = 5 + 5 + 5 = $15.00
+	want := "今日 2M 花费$15.00 模型claude-opus-4-8 会话7"
 	if got != want {
 		t.Errorf("wire-JSON render = %q, want %q", got, want)
 	}
@@ -228,17 +235,19 @@ func TestTokenSignatureE2E(t *testing.T) {
 			SessionCount: i64p(7),
 			WindowDays:   i32p(30),
 			Today: &common.TokenWindowUsage{
-				InputTokens:  i64p(1_000_000),
-				OutputTokens: i64p(200_000),
+				InputTokens:              i64p(1_000_000),
+				OutputTokens:             i64p(200_000),
+				CacheCreationInputTokens: i64p(800_000),
 				ByModel: []*common.TokenModelUsage{
-					{Model: "claude-opus-4-8", InputTokens: i64p(1_000_000), OutputTokens: i64p(200_000)},
+					{Model: "claude-opus-4-8", InputTokens: i64p(1_000_000), OutputTokens: i64p(200_000), CacheCreationInputTokens: i64p(800_000)},
 				},
 			},
 			Total: &common.TokenWindowUsage{
-				InputTokens:  i64p(5_000_000),
-				OutputTokens: i64p(1_000_000),
+				InputTokens:              i64p(5_000_000),
+				OutputTokens:             i64p(1_000_000),
+				CacheCreationInputTokens: i64p(4_000_000),
 				ByModel: []*common.TokenModelUsage{
-					{Model: "claude-opus-4-8", InputTokens: i64p(5_000_000), OutputTokens: i64p(1_000_000)},
+					{Model: "claude-opus-4-8", InputTokens: i64p(5_000_000), OutputTokens: i64p(1_000_000), CacheCreationInputTokens: i64p(4_000_000)},
 				},
 			},
 		},
@@ -256,16 +265,18 @@ func TestTokenSignatureE2E(t *testing.T) {
 	title := resp.Inline.Title
 	t.Logf("rendered signature: %s", title)
 
-	// Expectations:
-	//  today total = 1.0M + 0.2M = 1.2M tokens; cost(opus) = 1M*15 + 0.2M*75 = 15 + 15 = $30.00
-	//  total       = 5.0M + 1.0M = 6M tokens;  cost(opus) = 5M*15 + 1M*75 = 75 + 75 = $150.00
+	// Expectations (2026 定价：opus input 5 / output 25 / cacheCreation 6.25):
+	//  today total = 1.0M + 0.2M + 0.8M cacheCreation = 2M tokens
+	//              cost = 1M*5 + 0.2M*25 + 0.8M*6.25 = 5 + 5 + 5 = $15.00
+	//  total       = 5.0M + 1.0M + 4.0M cacheCreation = 10M tokens
+	//              cost = 5M*5 + 1M*25 + 4M*6.25 = 25 + 25 + 25 = $75.00
 	//  topModel derived server-side from byModel.
 	wantContains := []string{
-		"今日 1.2M(1200000)",
-		"花费$30.00",
+		"今日 2M(2000000)",
+		"花费$15.00",
 		"模型claude-opus-4-8",
-		"总 6M",
-		"花费$150.00",
+		"总 10M",
+		"花费$75.00",
 		"会话7",
 	}
 	for _, w := range wantContains {
